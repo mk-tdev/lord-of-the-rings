@@ -28,6 +28,7 @@ type TerrainSceneProps = {
   mode: WorldMode;
   weather: WeatherMode;
   quality: QualityMode;
+  focusLocationId: string;
   onSelect: (id: string) => void;
 };
 
@@ -35,6 +36,22 @@ const WORLD_WIDTH = 14;
 const WORLD_HEIGHT = 7.88;
 const DISPLACEMENT = 1.12;
 const DISPLACEMENT_BIAS = -0.2;
+
+type RegionDefinition = {
+  id: "westlands" | "mountains" | "south" | "mordor";
+  path: string;
+  locationIds: string[];
+  crop: { x: number; y: number; width: number; height: number };
+};
+
+const MAP_PIXEL_WIDTH = 1672;
+const MAP_PIXEL_HEIGHT = 941;
+const REGIONS: RegionDefinition[] = [
+  { id: "westlands", path: "/regions/westlands-detail.png", locationIds: ["shire", "rivendell"], crop: { x: 0, y: 80, width: 1000, height: 562 } },
+  { id: "mountains", path: "/regions/mountains-detail.png", locationIds: ["moria", "lothlorien", "fangorn"], crop: { x: 400, y: 120, width: 1000, height: 562 } },
+  { id: "south", path: "/regions/south-detail.png", locationIds: ["isengard", "rohan", "gondor"], crop: { x: 500, y: 360, width: 1000, height: 562 } },
+  { id: "mordor", path: "/regions/mordor-detail.png", locationIds: ["dead-marshes", "mordor"], crop: { x: 672, y: 0, width: 1000, height: 562 } },
+];
 
 function worldPosition(x: number, y: number) {
   return new THREE.Vector3((x / 100 - 0.5) * WORLD_WIDTH, (0.5 - y / 100) * WORLD_HEIGHT, 0);
@@ -467,6 +484,64 @@ export function TerrainScene(props: TerrainSceneProps) {
     terrainHigh.visible = false;
     scene.add(terrainHigh);
 
+    type RegionalMesh = {
+      mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
+      colorTexture: THREE.Texture;
+      displacementTexture: THREE.Texture;
+      normalTexture: THREE.Texture | null;
+    };
+    const regionalMeshes = new Map<RegionDefinition["id"], RegionalMesh>();
+    const pendingRegions = new Set<RegionDefinition["id"]>();
+    const ensureRegion = (region: RegionDefinition) => {
+      if (regionalMeshes.has(region.id) || pendingRegions.has(region.id)) return;
+      pendingRegions.add(region.id);
+      loader.load(region.path, (colorTexture) => {
+        colorTexture.colorSpace = THREE.SRGBColorSpace;
+        colorTexture.anisotropy = maxAnisotropy;
+        const x = region.crop.x / MAP_PIXEL_WIDTH;
+        const y = region.crop.y / MAP_PIXEL_HEIGHT;
+        const width = region.crop.width / MAP_PIXEL_WIDTH;
+        const height = region.crop.height / MAP_PIXEL_HEIGHT;
+        const displacementTexture = heightTexture.clone();
+        displacementTexture.image = heightTexture.image;
+        displacementTexture.wrapS = THREE.ClampToEdgeWrapping;
+        displacementTexture.wrapT = THREE.ClampToEdgeWrapping;
+        displacementTexture.repeat.set(width, height);
+        displacementTexture.offset.set(x, 1 - y - height);
+        displacementTexture.needsUpdate = true;
+        const normalTexture = detailNormalTexture?.clone() ?? null;
+        if (normalTexture) {
+          normalTexture.repeat.set(18, 10);
+          normalTexture.needsUpdate = true;
+        }
+        const geometry = new THREE.PlaneGeometry(WORLD_WIDTH * width, WORLD_HEIGHT * height, 256, 144);
+        const material = new THREE.MeshStandardMaterial({
+          map: colorTexture,
+          displacementMap: displacementTexture,
+          displacementScale: DISPLACEMENT,
+          displacementBias: DISPLACEMENT_BIAS,
+          normalMap: normalTexture,
+          normalScale: new THREE.Vector2(1.08, 1.08),
+          roughness: 0.82,
+          metalness: 0.025,
+          transparent: true,
+          opacity: 0,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        const center = worldPosition((x + width / 2) * 100, (y + height / 2) * 100);
+        mesh.position.set(center.x, center.y, 0.012);
+        mesh.receiveShadow = true;
+        mesh.visible = false;
+        mesh.renderOrder = 2;
+        scene.add(mesh);
+        regionalMeshes.set(region.id, { mesh, colorTexture, displacementTexture, normalTexture });
+        pendingRegions.delete(region.id);
+      });
+    };
+
     const waterMaterial = new THREE.MeshPhysicalMaterial({
       color: 0x173b43,
       transparent: true,
@@ -802,6 +877,14 @@ export function TerrainScene(props: TerrainSceneProps) {
       const useHighTerrain = current.quality !== "performance" && current.zoom >= 1.42;
       terrain.visible = !useHighTerrain;
       terrainHigh.visible = useHighTerrain;
+      const regionalDetailActive = current.quality !== "performance" && current.zoom >= 1.72;
+      const desiredRegion = regionalDetailActive ? REGIONS.find((region) => region.locationIds.includes(current.focusLocationId)) ?? null : null;
+      if (desiredRegion) ensureRegion(desiredRegion);
+      regionalMeshes.forEach((entry, id) => {
+        const targetOpacity = desiredRegion?.id === id ? 1 : 0;
+        entry.mesh.material.opacity = THREE.MathUtils.damp(entry.mesh.material.opacity, targetOpacity, 4.5, delta);
+        entry.mesh.visible = targetOpacity > 0 || entry.mesh.material.opacity > 0.015;
+      });
       terrainMaterial.normalScale.setScalar(current.quality === "cinematic" && current.zoom > 1.8 ? 1.28 : useHighTerrain ? 0.92 : 0.58);
       markerGroups.forEach((group) => {
         const location = group.userData.location as TerrainLocation;
@@ -919,6 +1002,11 @@ export function TerrainScene(props: TerrainSceneProps) {
       mapTexture.dispose();
       parchmentTexture.dispose();
       detailNormalTexture?.dispose();
+      regionalMeshes.forEach((entry) => {
+        entry.colorTexture.dispose();
+        entry.displacementTexture.dispose();
+        entry.normalTexture?.dispose();
+      });
       heightTexture.dispose();
       renderer.dispose();
       host.removeChild(renderer.domElement);

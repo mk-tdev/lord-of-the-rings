@@ -481,6 +481,7 @@ export default function Home() {
             mode={worldMode}
             weather={weather}
             quality={quality}
+            focusLocationId={selected.id}
             onSelect={(id) => {
               const location = locations.find((item) => item.id === id);
               if (location) focusLocation(location);
