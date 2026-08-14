@@ -11,6 +11,9 @@ export type TerrainLocation = {
   kind: "haven" | "realm" | "wild" | "shadow";
 };
 
+export type WorldMode = "realms" | "moonlit" | "shadow" | "parchment";
+export type WeatherMode = "clear" | "rain" | "snow" | "ash";
+
 type TerrainSceneProps = {
   locations: TerrainLocation[];
   focus: { x: number; y: number };
@@ -21,6 +24,8 @@ type TerrainSceneProps = {
   journeyColor: string;
   partyLocation: TerrainLocation;
   playing: boolean;
+  mode: WorldMode;
+  weather: WeatherMode;
   onSelect: (id: string) => void;
 };
 
@@ -366,6 +371,9 @@ export function TerrainScene(props: TerrainSceneProps) {
     const mapTexture = loader.load("/middle-earth-map-realistic.png");
     mapTexture.colorSpace = THREE.SRGBColorSpace;
     mapTexture.anisotropy = maxAnisotropy;
+    const parchmentTexture = loader.load("/middle-earth-map.png");
+    parchmentTexture.colorSpace = THREE.SRGBColorSpace;
+    parchmentTexture.anisotropy = maxAnisotropy;
     const heightTexture = loader.load("/middle-earth-heightmap.png", (texture) => {
       const image = texture.image as HTMLImageElement;
       const canvas = document.createElement("canvas");
@@ -605,6 +613,20 @@ export function TerrainScene(props: TerrainSceneProps) {
     const embers = new THREE.Points(emberGeometry, new THREE.PointsMaterial({ color: 0xff6a2a, size: 0.045, transparent: true, opacity: 0.86, blending: THREE.AdditiveBlending, depthWrite: false }));
     scene.add(embers);
 
+    const weatherCount = 620;
+    const weatherPositions = new Float32Array(weatherCount * 3);
+    for (let index = 0; index < weatherCount; index += 1) {
+      weatherPositions[index * 3] = -8 + Math.random() * 16;
+      weatherPositions[index * 3 + 1] = -5 + Math.random() * 10;
+      weatherPositions[index * 3 + 2] = 0.5 + Math.random() * 8;
+    }
+    const weatherGeometry = new THREE.BufferGeometry();
+    weatherGeometry.setAttribute("position", new THREE.BufferAttribute(weatherPositions, 3));
+    const weatherMaterial = new THREE.PointsMaterial({ color: 0xcbd7d4, size: 0.026, transparent: true, opacity: 0.58, depthWrite: false });
+    const weatherField = new THREE.Points(weatherGeometry, weatherMaterial);
+    weatherField.visible = false;
+    scene.add(weatherField);
+
     let route: THREE.Line | null = null;
     function rebuildRoute() {
       if (route) {
@@ -675,6 +697,8 @@ export function TerrainScene(props: TerrainSceneProps) {
 
     let previousTime = performance.now();
     let elapsed = 0;
+    let activeVisualMode: WorldMode | null = null;
+    let activeWeather: WeatherMode | null = null;
     let animationFrame = 0;
     const target = new THREE.Vector3();
     const desiredCamera = new THREE.Vector3();
@@ -684,6 +708,26 @@ export function TerrainScene(props: TerrainSceneProps) {
       previousTime = now;
       elapsed += delta;
       const current = propsRef.current;
+      if (current.mode !== activeVisualMode) {
+        activeVisualMode = current.mode;
+        terrainMaterial.map = current.mode === "parchment" ? parchmentTexture : mapTexture;
+        terrainMaterial.color.set(current.mode === "shadow" ? 0x9a8878 : current.mode === "moonlit" ? 0x8da1ae : 0xffffff);
+        terrainMaterial.needsUpdate = true;
+        renderer.toneMappingExposure = current.mode === "moonlit" ? 0.66 : current.mode === "shadow" ? 0.78 : 1.04;
+        hemisphere.intensity = current.mode === "moonlit" ? 0.72 : current.mode === "shadow" ? 0.9 : 1.55;
+        hemisphere.color.set(current.mode === "moonlit" ? 0x7b9bc1 : current.mode === "shadow" ? 0xb06c51 : 0xded4b8);
+        sun.intensity = current.mode === "moonlit" ? 1.25 : current.mode === "shadow" ? 1.65 : 3.1;
+        sun.color.set(current.mode === "moonlit" ? 0x8db7e8 : current.mode === "shadow" ? 0xd47754 : 0xffe5b2);
+        scene.background = new THREE.Color(current.mode === "moonlit" ? 0x050b14 : current.mode === "shadow" ? 0x150806 : 0x0b0d0a);
+        scene.fog = new THREE.FogExp2(current.mode === "moonlit" ? 0x07111c : current.mode === "shadow" ? 0x24100b : 0x11130f, current.mode === "shadow" ? 0.052 : 0.036);
+      }
+      if (current.weather !== activeWeather) {
+        activeWeather = current.weather;
+        weatherField.visible = current.weather !== "clear";
+        weatherMaterial.color.set(current.weather === "ash" ? 0x8d7668 : current.weather === "snow" ? 0xf1f3ea : 0xaecbd2);
+        weatherMaterial.size = current.weather === "rain" ? 0.018 : current.weather === "snow" ? 0.054 : 0.038;
+        weatherMaterial.opacity = current.weather === "rain" ? 0.48 : 0.66;
+      }
       const focusPoint = worldPosition(current.focus.x, current.focus.y);
       focusPoint.x -= current.pan.x / 115;
       focusPoint.y += current.pan.y / 115;
@@ -748,6 +792,22 @@ export function TerrainScene(props: TerrainSceneProps) {
         emberAttribute.setZ(index, z);
       }
       emberAttribute.needsUpdate = true;
+      if (weatherField.visible) {
+        const weatherAttribute = weatherGeometry.getAttribute("position") as THREE.BufferAttribute;
+        const fallSpeed = current.weather === "rain" ? 6.4 : current.weather === "snow" ? 0.72 : -0.36;
+        for (let index = 0; index < weatherCount; index += 1) {
+          let x = weatherAttribute.getX(index);
+          let z = weatherAttribute.getZ(index) - delta * fallSpeed;
+          x += delta * (current.weather === "snow" ? Math.sin(elapsed + index) * 0.09 : current.weather === "ash" ? 0.22 : -0.42);
+          if (z < 0.25) z = 7.8;
+          if (z > 8.2) z = 0.5;
+          if (x > 8) x = -8;
+          if (x < -8) x = 8;
+          weatherAttribute.setX(index, x);
+          weatherAttribute.setZ(index, z);
+        }
+        weatherAttribute.needsUpdate = true;
+      }
       mordorGlow.intensity = 6.2 + Math.sin(elapsed * 2.4) * 1.1;
       water.position.z = -0.185 + Math.sin(elapsed * 0.45) * 0.006;
       waterMaterial.opacity = 0.41 + Math.sin(elapsed * 0.3) * 0.025;
@@ -773,6 +833,7 @@ export function TerrainScene(props: TerrainSceneProps) {
         }
       });
       mapTexture.dispose();
+      parchmentTexture.dispose();
       heightTexture.dispose();
       renderer.dispose();
       host.removeChild(renderer.domElement);

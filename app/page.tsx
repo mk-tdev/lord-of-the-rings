@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TerrainScene } from "./TerrainScene";
+import { TerrainScene, type WeatherMode, type WorldMode } from "./TerrainScene";
 
 type Location = {
   id: string;
@@ -21,6 +21,14 @@ type Journey = {
   subtitle: string;
   color: string;
   path: string[];
+};
+
+type Soundscape = {
+  context: AudioContext;
+  source: AudioBufferSourceNode;
+  rumble: OscillatorNode;
+  tones: OscillatorNode[];
+  toneGain: GainNode;
 };
 
 const locations: Location[] = [
@@ -160,6 +168,32 @@ const journeys: Journey[] = [
   },
 ];
 
+const chapterNarration: Record<string, string> = {
+  shire: "A quiet door closes behind them. Ahead lies every road in the world.",
+  rivendell: "Beneath the waterfalls, nine companions bind their fates to one impossible purpose.",
+  moria: "The road descends. In the deep, drums answer footsteps that should have gone unheard.",
+  lothlorien: "Golden leaves fall without wind, and grief is given a moment of grace.",
+  fangorn: "The oldest forest wakes, and roots begin to remember their strength.",
+  rohan: "Across the grasslands the horns call, and every rider turns toward the storm.",
+  gondor: "Seven walls hold beneath a darkened sky while the White Tree waits for dawn.",
+  "dead-marshes": "Cold lights drift beneath the water. The path is narrow, and memory has teeth.",
+  mordor: "At the end of all roads, hope is carried by the smallest hands.",
+};
+
+const worldModes: Array<{ id: WorldMode; label: string }> = [
+  { id: "realms", label: "Living realms" },
+  { id: "moonlit", label: "Moonlit" },
+  { id: "shadow", label: "Shadow spreading" },
+  { id: "parchment", label: "Old atlas" },
+];
+
+const weatherModes: Array<{ id: WeatherMode; label: string; icon: string }> = [
+  { id: "clear", label: "Clear skies", icon: "☼" },
+  { id: "rain", label: "Rain", icon: "≋" },
+  { id: "snow", label: "Snow", icon: "✣" },
+  { id: "ash", label: "Ashfall", icon: "⁙" },
+];
+
 export default function Home() {
   const [selected, setSelected] = useState<Location>(locations[0]);
   const [zoom, setZoom] = useState(1);
@@ -174,8 +208,10 @@ export default function Home() {
   const [step, setStep] = useState(0);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [cameraFocus, setCameraFocus] = useState({ x: 50, y: 50 });
+  const [worldMode, setWorldMode] = useState<WorldMode>("realms");
+  const [weather, setWeather] = useState<WeatherMode>("clear");
   const drag = useRef({ active: false, x: 0, y: 0, ox: 0, oy: 0 });
-  const audioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode; rumble: OscillatorNode } | null>(null);
+  const audioRef = useRef<Soundscape | null>(null);
 
   const filteredLocations = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -184,6 +220,7 @@ export default function Home() {
       `${location.name} ${location.region} ${location.kind}`.toLowerCase().includes(needle),
     );
   }, [query]);
+  const partyLocation = locations.find((location) => location.id === activeJourney.path[step]) ?? locations[0];
 
   const focusLocation = useCallback((location: Location, revealLore = true) => {
     setSelected(location);
@@ -215,9 +252,33 @@ export default function Home() {
     return () => {
       audioRef.current?.source.stop();
       audioRef.current?.rumble.stop();
+      audioRef.current?.tones.forEach((tone) => tone.stop());
       audioRef.current?.context.close();
+      window.speechSynthesis?.cancel();
     };
   }, []);
+
+  useEffect(() => {
+    const soundscape = audioRef.current;
+    if (!soundscape || !soundOn) return;
+    const baseFrequency = selected.kind === "shadow" ? 73.42 : selected.kind === "realm" ? 110 : selected.kind === "haven" ? 98 : 82.41;
+    const now = soundscape.context.currentTime;
+    soundscape.tones.forEach((tone, index) => tone.frequency.linearRampToValueAtTime(baseFrequency * [1, 1.5, 2][index], now + 1.8));
+    soundscape.toneGain.gain.linearRampToValueAtTime(worldMode === "shadow" ? 0.018 : worldMode === "moonlit" ? 0.012 : 0.009, now + 1.2);
+  }, [selected, soundOn, worldMode]);
+
+  useEffect(() => {
+    if (!playing || !soundOn || !("speechSynthesis" in window)) return;
+    const line = chapterNarration[partyLocation.id];
+    if (!line) return;
+    window.speechSynthesis.cancel();
+    const narration = new SpeechSynthesisUtterance(line);
+    narration.rate = 0.82;
+    narration.pitch = 0.76;
+    narration.volume = 0.5;
+    window.speechSynthesis.speak(narration);
+    return () => window.speechSynthesis.cancel();
+  }, [partyLocation.id, playing, soundOn]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -234,6 +295,7 @@ export default function Home() {
     if (soundOn) {
       audioRef.current?.source.stop();
       audioRef.current?.rumble.stop();
+      audioRef.current?.tones.forEach((tone) => tone.stop());
       audioRef.current?.context.close();
       audioRef.current = null;
       setSoundOn(false);
@@ -258,9 +320,23 @@ export default function Home() {
     rumble.frequency.value = 42;
     rumbleGain.gain.value = 0.018;
     rumble.connect(rumbleGain).connect(context.destination);
+    const toneGain = context.createGain();
+    toneGain.gain.value = 0.009;
+    const toneFilter = context.createBiquadFilter();
+    toneFilter.type = "lowpass";
+    toneFilter.frequency.value = 760;
+    const tones = [98, 147, 196].map((frequency, index) => {
+      const tone = context.createOscillator();
+      tone.type = index === 0 ? "sine" : "triangle";
+      tone.frequency.value = frequency;
+      tone.connect(toneFilter);
+      tone.start();
+      return tone;
+    });
+    toneFilter.connect(toneGain).connect(context.destination);
     source.start();
     rumble.start();
-    audioRef.current = { context, source, rumble };
+    audioRef.current = { context, source, rumble, tones, toneGain };
     setSoundOn(true);
   };
 
@@ -273,6 +349,7 @@ export default function Home() {
       setSelected(start);
       setCameraFocus({ x: start.x, y: start.y });
     }
+    setWeather(journey.id === "ringbearer" ? "ash" : journey.id === "king" ? "rain" : "clear");
   };
 
   const togglePlay = () => {
@@ -297,10 +374,21 @@ export default function Home() {
     setCameraFocus({ x: 50, y: 50 });
   };
 
-  const partyLocation = locations.find((location) => location.id === activeJourney.path[step]) ?? locations[0];
+  const cycleWorldMode = () => {
+    const index = worldModes.findIndex((mode) => mode.id === worldMode);
+    setWorldMode(worldModes[(index + 1) % worldModes.length].id);
+  };
+
+  const cycleWeather = () => {
+    const index = weatherModes.findIndex((mode) => mode.id === weather);
+    setWeather(weatherModes[(index + 1) % weatherModes.length].id);
+  };
+
+  const activeWorldMode = worldModes.find((mode) => mode.id === worldMode) ?? worldModes[0];
+  const activeWeather = weatherModes.find((mode) => mode.id === weather) ?? weatherModes[0];
 
   return (
-    <main className={`world-shell ${playing ? "journey-active" : ""}`}>
+    <main className={`world-shell mode-${worldMode} weather-${weather} ${playing ? "journey-active" : ""}`}>
       <header className="topbar">
         <button className="brand" onClick={resetView} aria-label="Reset map view">
           <span className="brand-ring" aria-hidden="true">✦</span>
@@ -312,7 +400,8 @@ export default function Home() {
             <span className="sound-bars" aria-hidden="true"><i /><i /><i /></span>
             <span>{soundOn ? "Sound on" : "Sound off"}</span>
           </button>
-          <button className="era-pill"><span /> Third Age</button>
+          <button className="era-pill" onClick={cycleWorldMode} aria-label={`Visual mode: ${activeWorldMode.label}. Change mode`}><span /> {activeWorldMode.label}</button>
+          <button className="weather-button" onClick={cycleWeather} aria-label={`Weather: ${activeWeather.label}. Change weather`}><b>{activeWeather.icon}</b><small>{activeWeather.label}</small></button>
         </nav>
       </header>
 
@@ -373,6 +462,8 @@ export default function Home() {
           journeyColor={activeJourney.color}
           partyLocation={partyLocation}
           playing={playing}
+          mode={worldMode}
+          weather={weather}
           onSelect={(id) => {
             const location = locations.find((item) => item.id === id);
             if (location) focusLocation(location);
@@ -392,7 +483,7 @@ export default function Home() {
         </div>
         <div className="compass" aria-hidden="true"><b>N</b><span>✦</span><small>S</small></div>
         <div className="elevation-readout" aria-hidden="true"><i /><span><small>Terrain depth</small><b>2.4 km</b></span></div>
-        {playing && <div className="cinematic-status"><span>Chapter {step + 1}</span><b>{partyLocation.name}</b><small>{activeJourney.subtitle}</small></div>}
+        {playing && <div className="cinematic-status"><span>Chapter {step + 1}</span><b>{partyLocation.name}</b><small>{chapterNarration[partyLocation.id] ?? activeJourney.subtitle}</small></div>}
       </section>
 
       <aside className={`lore-panel ${panelOpen ? "open" : ""}`} aria-live="polite">
