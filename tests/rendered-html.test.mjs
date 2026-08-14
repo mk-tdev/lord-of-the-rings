@@ -54,6 +54,8 @@ test("keeps the WebGL terrain and port configuration integrated", async () => {
   assert.match(scene, /middle-earth-heightmap\.png/);
   assert.match(scene, /makeTraveler/);
   assert.match(scene, /TravelerRole/);
+  assert.match(scene, /makeLandmark/);
+  assert.match(scene, /InstancedMesh/);
   assert.match(scene, /requestAnimationFrame/);
   assert.match(page, /<TerrainScene/);
   assert.match(page, /activeJourney\.path/);

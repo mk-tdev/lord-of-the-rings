@@ -209,6 +209,113 @@ function makeTraveler(role: TravelerRole, scale: number) {
   return group;
 }
 
+function makeLandmark(location: TerrainLocation) {
+  const group = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: 0xc8c0aa, roughness: 0.82 });
+  const whiteStone = new THREE.MeshStandardMaterial({ color: 0xe0ded0, roughness: 0.68 });
+  const darkStone = new THREE.MeshStandardMaterial({ color: 0x20231f, roughness: 0.86 });
+  const timber = new THREE.MeshStandardMaterial({ color: 0x5a3e26, roughness: 1 });
+  const green = new THREE.MeshStandardMaterial({ color: 0x31583a, roughness: 1 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xb28a3d, roughness: 0.76 });
+  const lava = new THREE.MeshBasicMaterial({ color: 0xff5a20, toneMapped: false });
+
+  const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number) => {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    return mesh;
+  };
+  const tower = (x: number, y: number, height: number, radius: number, material = stone) => {
+    const mesh = add(new THREE.CylinderGeometry(radius * 0.86, radius, height, 10), material, x, y, height / 2);
+    mesh.rotation.x = Math.PI / 2;
+    return mesh;
+  };
+  const spire = (x: number, y: number, z: number, radius: number, height: number, material = stone) => {
+    const mesh = add(new THREE.ConeGeometry(radius, height, 10), material, x, y, z + height / 2);
+    mesh.rotation.x = Math.PI / 2;
+    return mesh;
+  };
+
+  switch (location.id) {
+    case "shire": {
+      for (const [x, y, size] of [[-0.16, 0, 0.11], [0.02, 0.08, 0.13], [0.18, -0.04, 0.09]] as number[][]) {
+        const hill = add(new THREE.SphereGeometry(size, 12, 7), green, x, y, size * 0.55);
+        hill.scale.z = 0.55;
+        add(new THREE.CircleGeometry(size * 0.38, 12), timber, x, y - size * 0.84, size * 0.45).rotation.x = Math.PI / 2;
+      }
+      tower(-0.02, 0.16, 0.28, 0.025, timber);
+      const crown = add(new THREE.SphereGeometry(0.14, 10, 7), green, -0.02, 0.16, 0.32);
+      crown.scale.set(1, 0.78, 0.9);
+      break;
+    }
+    case "rivendell":
+      tower(-0.12, 0.02, 0.38, 0.065, whiteStone);
+      tower(0.04, 0.04, 0.56, 0.07, whiteStone);
+      tower(0.18, 0, 0.31, 0.055, whiteStone);
+      spire(-0.12, 0.02, 0.38, 0.085, 0.16, gold);
+      spire(0.04, 0.04, 0.56, 0.09, 0.19, gold);
+      spire(0.18, 0, 0.31, 0.075, 0.14, gold);
+      break;
+    case "moria": {
+      const gate = add(new THREE.TorusGeometry(0.19, 0.035, 8, 24, Math.PI), stone, 0, 0, 0.16);
+      gate.rotation.x = Math.PI / 2;
+      add(new THREE.BoxGeometry(0.08, 0.08, 0.24), darkStone, -0.19, 0, 0.12);
+      add(new THREE.BoxGeometry(0.08, 0.08, 0.24), darkStone, 0.19, 0, 0.12);
+      break;
+    }
+    case "lothlorien":
+    case "fangorn":
+      for (let index = 0; index < 7; index += 1) {
+        const angle = (index / 7) * Math.PI * 2;
+        const radius = index === 0 ? 0 : 0.15;
+        tower(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.3 + (index % 3) * 0.08, 0.025, timber);
+        const crown = add(new THREE.SphereGeometry(0.09 + (index % 2) * 0.025, 8, 6), location.id === "lothlorien" ? gold : green, Math.cos(angle) * radius, Math.sin(angle) * radius, 0.35 + (index % 3) * 0.08);
+        crown.scale.z = 1.35;
+      }
+      break;
+    case "rohan":
+      add(new THREE.BoxGeometry(0.38, 0.2, 0.18), timber, 0, 0, 0.09);
+      add(new THREE.ConeGeometry(0.25, 0.22, 4), gold, 0, 0, 0.27).rotation.set(Math.PI / 2, 0, Math.PI / 4);
+      tower(0, -0.12, 0.22, 0.018, gold);
+      break;
+    case "isengard":
+      tower(0, 0, 0.68, 0.09, darkStone);
+      for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+        spire(Math.cos(angle) * 0.08, Math.sin(angle) * 0.08, 0.58, 0.065, 0.28, darkStone);
+      }
+      break;
+    case "gondor":
+      for (let level = 0; level < 4; level += 1) {
+        add(new THREE.CylinderGeometry(0.26 - level * 0.045, 0.29 - level * 0.045, 0.09, 14), whiteStone, 0, 0, 0.045 + level * 0.085).rotation.x = Math.PI / 2;
+      }
+      tower(0.03, 0, 0.62, 0.047, whiteStone);
+      spire(0.03, 0, 0.62, 0.065, 0.16, gold);
+      break;
+    case "dead-marshes":
+      for (let index = 0; index < 5; index += 1) {
+        const pool = add(new THREE.CircleGeometry(0.08 + index * 0.012, 14), new THREE.MeshBasicMaterial({ color: 0x769b89, transparent: true, opacity: 0.46 }), (index - 2) * 0.1, (index % 2) * 0.11, 0.012);
+        pool.rotation.x = 0;
+        const light = add(new THREE.SphereGeometry(0.016, 7, 5), new THREE.MeshBasicMaterial({ color: 0xb4e2bd, toneMapped: false }), (index - 2) * 0.1, (index % 2) * 0.11, 0.08 + index * 0.015);
+        light.userData.ghostLight = true;
+      }
+      break;
+    case "mordor": {
+      const volcano = add(new THREE.ConeGeometry(0.28, 0.72, 18), darkStone, 0, 0, 0.36);
+      volcano.rotation.x = Math.PI / 2;
+      const crater = add(new THREE.TorusGeometry(0.105, 0.026, 8, 18), lava, 0, 0, 0.73);
+      crater.scale.y = 0.68;
+      add(new THREE.SphereGeometry(0.055, 10, 7), lava, 0, 0, 0.72);
+      break;
+    }
+  }
+
+  group.scale.setScalar(0.82);
+  group.userData.location = location;
+  return group;
+}
+
 export function TerrainScene(props: TerrainSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const propsRef = useRef(props);
@@ -324,6 +431,7 @@ export function TerrainScene(props: TerrainSceneProps) {
 
     const sampleHeightRef: { current: (x: number, y: number) => number } = { current: () => 0.15 };
     const markerGroups: THREE.Group[] = [];
+    const landmarkGroups: THREE.Group[] = [];
     const markerHits: THREE.Object3D[] = [];
     const gold = new THREE.MeshBasicMaterial({ color: 0xe4bd67, toneMapped: false });
     const ember = new THREE.MeshBasicMaterial({ color: 0xe56a42, toneMapped: false });
@@ -354,7 +462,59 @@ export function TerrainScene(props: TerrainSceneProps) {
       }
       markerGroups.push(group);
       scene.add(group);
+
+      const landmark = makeLandmark(location);
+      landmark.position.copy(position);
+      landmark.position.x -= 0.18;
+      landmark.position.y += 0.12;
+      landmarkGroups.push(landmark);
+      scene.add(landmark);
     }
+
+    let forestSeed = 7391;
+    const forestRandom = () => {
+      forestSeed = (forestSeed * 16807) % 2147483647;
+      return (forestSeed - 1) / 2147483646;
+    };
+    const forestClusters = [
+      { x: 24, y: 27, rx: 11, ry: 10, count: 90 },
+      { x: 27, y: 49, rx: 9, ry: 17, count: 105 },
+      { x: 40, y: 18, rx: 9, ry: 9, count: 72 },
+      { x: 48, y: 43, rx: 6, ry: 7, count: 68 },
+      { x: 52, y: 55, rx: 7, ry: 10, count: 84 },
+    ];
+    const forestPoints = forestClusters.flatMap((cluster) => Array.from({ length: cluster.count }, () => {
+      const angle = forestRandom() * Math.PI * 2;
+      const radius = Math.sqrt(forestRandom());
+      return {
+        x: cluster.x + Math.cos(angle) * cluster.rx * radius,
+        y: cluster.y + Math.sin(angle) * cluster.ry * radius,
+        scale: 0.65 + forestRandom() * 0.75,
+        rotation: forestRandom() * Math.PI * 2,
+      };
+    }));
+    const forestGeometry = new THREE.ConeGeometry(0.035, 0.2, 7);
+    forestGeometry.rotateX(Math.PI / 2);
+    forestGeometry.translate(0, 0, 0.1);
+    const forest = new THREE.InstancedMesh(forestGeometry, new THREE.MeshStandardMaterial({ color: 0x24462e, roughness: 1 }), forestPoints.length);
+    forest.castShadow = true;
+    forest.receiveShadow = true;
+    scene.add(forest);
+    const forestMatrix = new THREE.Matrix4();
+    const forestQuaternion = new THREE.Quaternion();
+    const forestScale = new THREE.Vector3();
+    function updateForest() {
+      forestPoints.forEach((point, index) => {
+        const position = worldPosition(point.x, point.y);
+        position.z = sampleHeightRef.current(point.x, point.y) + 0.02;
+        forestQuaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), point.rotation);
+        forestScale.setScalar(point.scale);
+        forestMatrix.compose(position, forestQuaternion, forestScale);
+        forest.setMatrixAt(index, forestMatrix);
+      });
+      forest.instanceMatrix.needsUpdate = true;
+    }
+    updateForest();
 
     const party = new THREE.Group();
     const travelerSpecs: Array<[TravelerRole, number, number, number]> = [
@@ -381,6 +541,7 @@ export function TerrainScene(props: TerrainSceneProps) {
 
     const mistTexture = makeMistTexture();
     const mistSprites: THREE.Sprite[] = [];
+    const smokeSprites: THREE.Sprite[] = [];
     if (mistTexture) {
       for (let index = 0; index < 18; index += 1) {
         const material = new THREE.SpriteMaterial({ map: mistTexture, transparent: true, opacity: 0.11 + Math.random() * 0.12, depthWrite: false });
@@ -391,6 +552,45 @@ export function TerrainScene(props: TerrainSceneProps) {
         mistSprites.push(sprite);
         scene.add(sprite);
       }
+      const smokeSources = [
+        { x: 48, y: 61, count: 5, tint: 0x6d6b61 },
+        { x: 87, y: 34, count: 9, tint: 0x6a4032 },
+        { x: 58, y: 61, count: 3, tint: 0x8b806c },
+      ];
+      smokeSources.forEach((source) => {
+        const sourcePosition = worldPosition(source.x, source.y);
+        for (let index = 0; index < source.count; index += 1) {
+          const material = new THREE.SpriteMaterial({ map: mistTexture, color: source.tint, transparent: true, opacity: 0.13, depthWrite: false });
+          const smoke = new THREE.Sprite(material);
+          smoke.position.set(sourcePosition.x + (Math.random() - 0.5) * 0.18, sourcePosition.y + (Math.random() - 0.5) * 0.12, 0.8 + index * 0.12);
+          smoke.scale.set(0.38 + index * 0.06, 0.22 + index * 0.035, 1);
+          smoke.userData.baseZ = smoke.position.z;
+          smoke.userData.speed = 0.045 + Math.random() * 0.035;
+          smoke.userData.phase = Math.random() * Math.PI * 2;
+          smokeSprites.push(smoke);
+          scene.add(smoke);
+        }
+      });
+    }
+
+    const birdMaterial = new THREE.MeshBasicMaterial({ color: 0x151914, side: THREE.DoubleSide, transparent: true, opacity: 0.78 });
+    const birdFlock: THREE.Group[] = [];
+    for (let index = 0; index < 11; index += 1) {
+      const bird = new THREE.Group();
+      const wings: THREE.Mesh[] = [];
+      for (const side of [-1, 1]) {
+        const wing = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.035), birdMaterial);
+        wing.position.x = side * 0.048;
+        wing.rotation.z = side * 0.18;
+        wings.push(wing);
+        bird.add(wing);
+      }
+      bird.position.set(-6.5 + index * 0.45, 2.4 + (index % 4) * 0.22, 2.7 + (index % 3) * 0.15);
+      bird.userData.wings = wings;
+      bird.userData.speed = 0.12 + (index % 4) * 0.018;
+      bird.userData.phase = index * 0.7;
+      birdFlock.push(bird);
+      scene.add(bird);
     }
 
     const emberCount = 90;
@@ -437,6 +637,11 @@ export function TerrainScene(props: TerrainSceneProps) {
         const location = group.userData.location as TerrainLocation;
         group.position.z = sampleHeightRef.current(location.x, location.y) + 0.13;
       });
+      landmarkGroups.forEach((group) => {
+        const location = group.userData.location as TerrainLocation;
+        group.position.z = sampleHeightRef.current(location.x, location.y) + 0.04;
+      });
+      updateForest();
     }
 
     rebuildRoute();
@@ -522,6 +727,19 @@ export function TerrainScene(props: TerrainSceneProps) {
         sprite.position.x += sprite.userData.speed * delta;
         sprite.position.y += Math.sin(elapsed * 0.18 + index) * 0.001;
         if (sprite.position.x > 7.7) sprite.position.x = -7.7;
+      });
+      smokeSprites.forEach((sprite) => {
+        const rise = (elapsed * sprite.userData.speed + sprite.userData.phase) % 1.5;
+        sprite.position.z = sprite.userData.baseZ + rise;
+        sprite.position.x += Math.sin(elapsed * 0.45 + sprite.userData.phase) * delta * 0.014;
+        (sprite.material as THREE.SpriteMaterial).opacity = 0.16 * (1 - rise / 1.5);
+      });
+      birdFlock.forEach((bird) => {
+        bird.position.x += bird.userData.speed * delta;
+        bird.position.y += Math.sin(elapsed * 0.22 + bird.userData.phase) * delta * 0.025;
+        if (bird.position.x > 7.6) bird.position.x = -7.6;
+        const flap = Math.sin(elapsed * 8 + bird.userData.phase) * 0.72;
+        (bird.userData.wings as THREE.Mesh[]).forEach((wing, wingIndex) => { wing.rotation.y = flap * (wingIndex === 0 ? 1 : -1); });
       });
       const emberAttribute = emberGeometry.getAttribute("position") as THREE.BufferAttribute;
       for (let index = 0; index < emberCount; index += 1) {
