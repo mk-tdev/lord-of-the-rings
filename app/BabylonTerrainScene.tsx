@@ -13,7 +13,9 @@ import {
   HemisphericLight,
   Mesh,
   MeshBuilder,
+  ParticleSystem,
   PBRMaterial,
+  PointLight,
   PointerEventTypes,
   RawTexture,
   Scene,
@@ -25,7 +27,7 @@ import {
   VertexData,
   WebGPUEngine,
 } from "@babylonjs/core";
-import type { QualityMode, TerrainLocation, TerrainSceneProps, WorldMode } from "./terrain-types";
+import type { QualityMode, TerrainLocation, TerrainSceneProps, WeatherMode, WorldMode } from "./terrain-types";
 
 export type { QualityMode, TerrainLocation, WeatherMode, WorldMode } from "./terrain-types";
 
@@ -214,6 +216,237 @@ function createMarker(scene: Scene, location: TerrainLocation, sampler: HeightSa
   return { root, ring, beacon };
 }
 
+type TravelerRole = "ranger" | "wizard" | "hobbit" | "scout";
+type TravelerRig = { root: TransformNode; arms: TransformNode[]; legs: TransformNode[] };
+
+function makeLimb(scene: Scene, name: string, material: PBRMaterial, length: number, radius: number) {
+  const pivot = new TransformNode(`${name}-pivot`, scene);
+  const limb = MeshBuilder.CreateCylinder(name, { height: length, diameterTop: radius * 1.65, diameterBottom: radius * 2, tessellation: 8 }, scene);
+  limb.material = material;
+  limb.position.y = -length / 2;
+  limb.parent = pivot;
+  return pivot;
+}
+
+function makeTraveler(scene: Scene, role: TravelerRole, scale: number): TravelerRig {
+  const root = new TransformNode(`traveler-${role}`, scene);
+  root.scaling.setAll(scale);
+  const palettes = {
+    ranger: { cloth: "#263b2e", cloak: "#18271f", leather: "#4b3524", hair: "#271d16", skin: "#9a7455" },
+    wizard: { cloth: "#73766d", cloak: "#555b55", leather: "#574631", hair: "#b8b3a5", skin: "#a98566" },
+    hobbit: { cloth: "#69432a", cloak: "#31513b", leather: "#5b3821", hair: "#4b2b18", skin: "#a87d59" },
+    scout: { cloth: "#4b5c35", cloak: "#35452e", leather: "#6a4328", hair: "#382416", skin: "#a77b58" },
+  }[role];
+  const cloth = makePbr(scene, `${role}-cloth`, palettes.cloth);
+  const cloak = makePbr(scene, `${role}-cloak`, palettes.cloak);
+  const leather = makePbr(scene, `${role}-leather`, palettes.leather, 0, 0.84);
+  const hair = makePbr(scene, `${role}-hair`, palettes.hair);
+  const skin = makePbr(scene, `${role}-skin`, palettes.skin, 0, 0.88);
+  const dark = makePbr(scene, `${role}-dark`, "#171712");
+  const metal = makePbr(scene, `${role}-metal`, "#b7b3a1", 0.78, 0.3);
+
+  const body = MeshBuilder.CreateCylinder(`${role}-body`, { height: 0.43, diameterTop: 0.21, diameterBottom: 0.3, tessellation: 10 }, scene);
+  body.position.y = 0.5;
+  body.material = cloth;
+  body.parent = root;
+  const shoulders = MeshBuilder.CreateSphere(`${role}-shoulders`, { diameter: 0.3, segments: 10 }, scene);
+  shoulders.scaling.set(1.15, 0.66, 0.72);
+  shoulders.position.y = 0.7;
+  shoulders.material = cloth;
+  shoulders.parent = root;
+  const cape = MeshBuilder.CreateCylinder(`${role}-cape`, { height: 0.56, diameterTop: 0.29, diameterBottom: 0.42, tessellation: 10 }, scene);
+  cape.scaling.z = 0.34;
+  cape.position.set(0, 0.48, 0.07);
+  cape.material = cloak;
+  cape.parent = root;
+  const head = MeshBuilder.CreateSphere(`${role}-head`, { diameter: 0.205, segments: 12 }, scene);
+  head.scaling.set(0.92, 1.08, 0.9);
+  head.position.y = 0.87;
+  head.material = skin;
+  head.parent = root;
+  const hairCap = MeshBuilder.CreateSphere(`${role}-hair`, { diameter: 0.222, segments: 10, slice: 0.62 }, scene);
+  hairCap.position.y = 0.945;
+  hairCap.material = hair;
+  hairCap.parent = root;
+
+  const arms: TransformNode[] = [];
+  const legs: TransformNode[] = [];
+  for (const side of [-1, 1]) {
+    const arm = makeLimb(scene, `${role}-arm-${side}`, role === "wizard" ? cloth : leather, 0.34, 0.036);
+    arm.position.set(side * 0.145, 0.69, 0);
+    arm.parent = root;
+    arms.push(arm);
+    const short = role === "hobbit" || role === "scout";
+    const leg = makeLimb(scene, `${role}-leg-${side}`, dark, short ? 0.27 : 0.34, 0.043);
+    leg.position.set(side * 0.065, 0.35, 0);
+    leg.parent = root;
+    legs.push(leg);
+    const foot = MeshBuilder.CreateSphere(`${role}-foot-${side}`, { diameter: 0.11, segments: 8 }, scene);
+    foot.scaling.set(0.9, 0.62, 1.45);
+    foot.position.set(side * 0.065, short ? 0.07 : 0.015, -0.035);
+    foot.material = short ? skin : leather;
+    foot.parent = root;
+  }
+  if (role === "wizard") {
+    const hat = MeshBuilder.CreateCylinder("wizard-hat", { height: 0.38, diameterTop: 0, diameterBottom: 0.29, tessellation: 12 }, scene);
+    hat.position.y = 1.12;
+    hat.material = cloak;
+    hat.parent = root;
+    const staff = MeshBuilder.CreateCylinder("wizard-staff", { height: 1.2, diameter: 0.035, tessellation: 8 }, scene);
+    staff.position.set(-0.25, 0.56, 0);
+    staff.material = leather;
+    staff.parent = root;
+    const crystal = MeshBuilder.CreatePolyhedron("wizard-crystal", { type: 1, size: 0.07 }, scene);
+    const glow = makePbr(scene, "wizard-crystal-glow", "#ead89c", 0.1, 0.2);
+    glow.emissiveColor = Color3.FromHexString("#ead89c");
+    crystal.position.set(-0.25, 1.18, 0);
+    crystal.material = glow;
+    crystal.parent = root;
+  } else if (role === "ranger") {
+    const sword = MeshBuilder.CreateCylinder("ranger-sword", { height: 0.68, diameter: 0.025, tessellation: 7 }, scene);
+    sword.rotation.z = -0.38;
+    sword.position.set(0.15, 0.58, 0.08);
+    sword.material = metal;
+    sword.parent = root;
+  } else {
+    const pack = MeshBuilder.CreateBox(`${role}-pack`, { width: 0.18, height: 0.27, depth: 0.11 }, scene);
+    pack.position.set(0, 0.52, 0.14);
+    pack.material = leather;
+    pack.parent = root;
+  }
+  return { root, arms, legs };
+}
+
+function addLandmarkPart(scene: Scene, parent: TransformNode, mesh: Mesh, material: PBRMaterial, position: Vector3) {
+  mesh.material = material;
+  mesh.position.copyFrom(position);
+  mesh.parent = parent;
+  return mesh;
+}
+
+function makeLandmark(scene: Scene, location: TerrainLocation, sampler: HeightSampler, shadows: ShadowGenerator) {
+  const root = new TransformNode(`landmark-${location.id}`, scene);
+  root.position.copyFrom(worldPosition(location.x, location.y, sampler(location.x, location.y) + 0.025));
+  root.position.x -= 0.18;
+  root.position.z += 0.12;
+  root.scaling.setAll(0.82);
+  const stone = makePbr(scene, `${location.id}-stone`, "#c8c0aa");
+  const white = makePbr(scene, `${location.id}-white`, "#e0ded0", 0, 0.7);
+  const dark = makePbr(scene, `${location.id}-darkstone`, "#20231f");
+  const wood = makePbr(scene, `${location.id}-wood`, "#5a3e26");
+  const green = makePbr(scene, `${location.id}-green`, "#31583a");
+  const gold = makePbr(scene, `${location.id}-gold`, "#b28a3d", 0.18, 0.62);
+  const lava = makePbr(scene, `${location.id}-lava`, "#ff5a20", 0, 0.2);
+  lava.emissiveColor = Color3.FromHexString("#ff471c");
+  const add = (mesh: Mesh, material: PBRMaterial, x: number, y: number, z: number) => {
+    addLandmarkPart(scene, root, mesh, material, new Vector3(x, y, z));
+    shadows.addShadowCaster(mesh);
+    return mesh;
+  };
+  const tower = (x: number, z: number, height: number, radius: number, material = stone) =>
+    add(MeshBuilder.CreateCylinder(`${location.id}-tower`, { height, diameterTop: radius * 1.72, diameterBottom: radius * 2, tessellation: 10 }, scene), material, x, height / 2, z);
+  const spire = (x: number, z: number, y: number, radius: number, height: number, material = stone) =>
+    add(MeshBuilder.CreateCylinder(`${location.id}-spire`, { height, diameterTop: 0, diameterBottom: radius * 2, tessellation: 10 }, scene), material, x, y + height / 2, z);
+
+  if (location.id === "shire") {
+    for (const [x, z, size] of [[-0.16, 0, 0.11], [0.02, 0.08, 0.13], [0.18, -0.04, 0.09]] as number[][]) {
+      const hill = add(MeshBuilder.CreateSphere("hobbit-hill", { diameter: size * 2, segments: 12 }, scene), green, x, size * 0.55, z);
+      hill.scaling.y = 0.55;
+      const door = add(MeshBuilder.CreateCylinder("hobbit-door", { height: 0.012, diameter: size * 0.76, tessellation: 16 }, scene), wood, x, size * 0.44, z - size * 0.83);
+      door.rotation.x = Math.PI / 2;
+    }
+  } else if (location.id === "rivendell") {
+    [[-0.12, 0.02, 0.38, 0.065], [0.04, 0.04, 0.56, 0.07], [0.18, 0, 0.31, 0.055]].forEach(([x, z, h, r]) => {
+      tower(x, z, h, r, white); spire(x, z, h, r * 1.25, 0.17, gold);
+    });
+  } else if (location.id === "moria") {
+    const gate = add(MeshBuilder.CreateTorus("moria-gate", { diameter: 0.38, thickness: 0.065, tessellation: 24 }, scene), stone, 0, 0.18, 0);
+    gate.rotation.x = Math.PI / 2;
+    add(MeshBuilder.CreateBox("moria-left", { size: 0.1, height: 0.26 }, scene), dark, -0.2, 0.13, 0);
+    add(MeshBuilder.CreateBox("moria-right", { size: 0.1, height: 0.26 }, scene), dark, 0.2, 0.13, 0);
+  } else if (location.id === "lothlorien" || location.id === "fangorn") {
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index / 8) * Math.PI * 2;
+      const radius = index ? 0.16 : 0;
+      const height = 0.31 + (index % 3) * 0.08;
+      tower(Math.cos(angle) * radius, Math.sin(angle) * radius, height, 0.025, wood);
+      const crown = add(MeshBuilder.CreateSphere("ancient-tree", { diameter: 0.19 + (index % 2) * 0.04, segments: 8 }, scene), location.id === "lothlorien" ? gold : green, Math.cos(angle) * radius, height + 0.05, Math.sin(angle) * radius);
+      crown.scaling.y = 1.35;
+    }
+  } else if (location.id === "rohan") {
+    add(MeshBuilder.CreateBox("golden-hall", { width: 0.4, height: 0.18, depth: 0.22 }, scene), wood, 0, 0.09, 0);
+    const roof = add(MeshBuilder.CreateCylinder("golden-roof", { height: 0.42, diameter: 0.28, tessellation: 4 }, scene), gold, 0, 0.24, 0);
+    roof.rotation.z = Math.PI / 2;
+  } else if (location.id === "isengard") {
+    tower(0, 0, 0.69, 0.09, dark);
+    for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) spire(Math.cos(angle) * 0.08, Math.sin(angle) * 0.08, 0.56, 0.065, 0.29, dark);
+  } else if (location.id === "gondor") {
+    for (let level = 0; level < 4; level += 1) tower(0, 0, 0.09 + level * 0.075, 0.29 - level * 0.045, white);
+    tower(0.03, 0, 0.62, 0.047, white);
+    spire(0.03, 0, 0.62, 0.065, 0.16, gold);
+  } else if (location.id === "dead-marshes") {
+    const poolMaterial = makePbr(scene, "marsh-light", "#769b89", 0.1, 0.16);
+    poolMaterial.emissiveColor = Color3.FromHexString("#5c8f76").scale(0.5);
+    poolMaterial.alpha = 0.62;
+    for (let index = 0; index < 5; index += 1) {
+      const pool = add(MeshBuilder.CreateDisc("marsh-pool", { radius: 0.08 + index * 0.012, tessellation: 18 }, scene), poolMaterial, (index - 2) * 0.1, 0.015, (index % 2) * 0.11);
+      pool.rotation.x = Math.PI / 2;
+    }
+  } else if (location.id === "mordor") {
+    add(MeshBuilder.CreateCylinder("mount-doom", { height: 0.72, diameterTop: 0.18, diameterBottom: 0.58, tessellation: 20 }, scene), dark, 0, 0.36, 0);
+    const crater = add(MeshBuilder.CreateTorus("doom-crater", { diameter: 0.21, thickness: 0.045, tessellation: 20 }, scene), lava, 0, 0.73, 0);
+    crater.scaling.z = 0.7;
+  }
+  return root;
+}
+
+function makeParticleTexture(scene: Scene, name: string, center: string) {
+  const texture = new DynamicTexture(name, { width: 64, height: 64 }, scene, false);
+  const context = texture.getContext();
+  const gradient = context.createRadialGradient(32, 32, 1, 32, 32, 31);
+  gradient.addColorStop(0, center);
+  gradient.addColorStop(0.35, center);
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 64, 64);
+  texture.hasAlpha = true;
+  texture.update();
+  return texture;
+}
+
+function makeWeather(scene: Scene, texture: DynamicTexture) {
+  const particles = new ParticleSystem("weather-field", 900, scene);
+  particles.particleTexture = texture;
+  particles.emitter = new Vector3(0, 6, 0);
+  particles.minEmitBox = new Vector3(-8, -0.5, -5);
+  particles.maxEmitBox = new Vector3(8, 1.5, 5);
+  particles.minLifeTime = 2;
+  particles.maxLifeTime = 5;
+  particles.emitRate = 0;
+  particles.minSize = 0.025;
+  particles.maxSize = 0.055;
+  particles.direction1 = new Vector3(-0.4, -5, 0.05);
+  particles.direction2 = new Vector3(0.1, -6.5, 0.2);
+  particles.gravity = new Vector3(0, -0.8, 0);
+  particles.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+  return particles;
+}
+
+function setWeather(particles: ParticleSystem, weather: WeatherMode) {
+  particles.stop();
+  if (weather === "clear") return;
+  particles.emitRate = weather === "rain" ? 560 : weather === "snow" ? 190 : 140;
+  particles.minSize = weather === "rain" ? 0.018 : weather === "snow" ? 0.06 : 0.04;
+  particles.maxSize = weather === "rain" ? 0.032 : weather === "snow" ? 0.12 : 0.075;
+  particles.minLifeTime = weather === "rain" ? 1.4 : 4;
+  particles.maxLifeTime = weather === "rain" ? 2.2 : 7;
+  particles.direction1 = weather === "rain" ? new Vector3(-0.5, -8, 0) : weather === "snow" ? new Vector3(-0.25, -0.8, -0.2) : new Vector3(0.15, 0.4, -0.1);
+  particles.direction2 = weather === "rain" ? new Vector3(0.1, -10, 0.25) : weather === "snow" ? new Vector3(0.3, -1.2, 0.25) : new Vector3(0.5, 0.9, 0.25);
+  particles.color1 = Color4.FromHexString(weather === "ash" ? "#8d7668aa" : weather === "snow" ? "#f1f3eadd" : "#aecbd2aa");
+  particles.color2 = particles.color1.scale(0.72);
+  particles.start();
+}
+
 function createRoute(scene: Scene, locations: TerrainLocation[], path: string[], color: string, sampler: HeightSampler) {
   const points = path.flatMap((id) => {
     const location = locations.find((item) => item.id === id);
@@ -309,8 +542,129 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
       terrainMaterial.metallic = 0.02;
       terrain.material = terrainMaterial;
 
+      const underlay = MeshBuilder.CreateBox("terrain-underlay", { width: WORLD_WIDTH + 0.34, height: 0.22, depth: WORLD_DEPTH + 0.34 }, scene);
+      underlay.position.y = -0.31;
+      underlay.material = makePbr(scene, "earth-underlay", "#231e14", 0, 1);
+      const water = MeshBuilder.CreateGround("shimmering-water", { width: WORLD_WIDTH + 0.08, height: WORLD_DEPTH + 0.08, subdivisions: 1 }, scene);
+      water.position.y = -0.175;
+      const waterMaterial = makePbr(scene, "water-material", "#173b43", 0.12, 0.2);
+      waterMaterial.alpha = 0.48;
+      waterMaterial.indexOfRefraction = 1.33;
+      water.material = waterMaterial;
+
       const markers = new Map<string, ReturnType<typeof createMarker>>();
       for (const location of propsRef.current.locations) markers.set(location.id, createMarker(scene, location, sampler));
+      const landmarks = propsRef.current.locations.map((location) => makeLandmark(scene, location, sampler, shadows));
+
+      let forestSeed = 7391;
+      const forestRandom = () => {
+        forestSeed = (forestSeed * 16807) % 2147483647;
+        return (forestSeed - 1) / 2147483646;
+      };
+      const treeMaterial = makePbr(scene, "forest-material", "#24462e", 0, 1);
+      const treeSource = MeshBuilder.CreateCylinder("tree-source", { height: 0.22, diameterTop: 0, diameterBottom: 0.075, tessellation: 7 }, scene);
+      treeSource.material = treeMaterial;
+      treeSource.isVisible = false;
+      const forestClusters = [
+        { x: 24, y: 27, rx: 11, ry: 10, count: 72 },
+        { x: 27, y: 49, rx: 9, ry: 17, count: 84 },
+        { x: 40, y: 18, rx: 9, ry: 9, count: 58 },
+        { x: 48, y: 43, rx: 6, ry: 7, count: 54 },
+        { x: 52, y: 55, rx: 7, ry: 10, count: 68 },
+      ];
+      for (const cluster of forestClusters) {
+        for (let index = 0; index < cluster.count; index += 1) {
+          const angle = forestRandom() * Math.PI * 2;
+          const radius = Math.sqrt(forestRandom());
+          const x = cluster.x + Math.cos(angle) * cluster.rx * radius;
+          const y = cluster.y + Math.sin(angle) * cluster.ry * radius;
+          const tree = treeSource.createInstance(`tree-${cluster.x}-${index}`);
+          tree.position.copyFrom(worldPosition(x, y, sampler(x, y) + 0.1));
+          tree.rotation.y = forestRandom() * Math.PI * 2;
+          tree.scaling.setAll(0.65 + forestRandom() * 0.75);
+        }
+      }
+
+      const party = new TransformNode("moving-fellowship", scene);
+      const travelerSpecs: Array<[TravelerRole, number, number, number]> = [
+        ["ranger", 1.04, -0.28, 0.02],
+        ["wizard", 1.08, 0, 0.06],
+        ["hobbit", 0.8, 0.25, -0.04],
+        ["scout", 0.78, 0.45, 0.08],
+      ];
+      const travelers = travelerSpecs.map(([role, scale, x, z]) => {
+        const traveler = makeTraveler(scene, role, scale);
+        traveler.root.position.set(x, 0, z);
+        traveler.root.parent = party;
+        traveler.root.getChildMeshes().forEach((mesh) => shadows.addShadowCaster(mesh));
+        return traveler;
+      });
+      const partyStart = propsRef.current.partyLocation;
+      party.position.copyFrom(worldPosition(partyStart.x, partyStart.y, sampler(partyStart.x, partyStart.y) + 0.14));
+      party.scaling.setAll(0.7);
+      const torch = new PointLight("fellowship-torch", new Vector3(0.46, 0.72, 0.05), scene);
+      torch.diffuse = Color3.FromHexString("#ff9b3d");
+      torch.intensity = 4.8;
+      torch.range = 2.1;
+      torch.parent = party;
+
+      const weatherTexture = makeParticleTexture(scene, "weather-particle", "rgba(235,242,238,.95)");
+      const weatherField = makeWeather(scene, weatherTexture);
+      let activeWeather: WeatherMode | null = null;
+      const emberTexture = makeParticleTexture(scene, "ember-particle", "rgba(255,106,42,1)");
+      const embers = new ParticleSystem("mordor-embers", 220, scene);
+      embers.particleTexture = emberTexture;
+      embers.emitter = worldPosition(87, 34, sampler(87, 34) + 0.55);
+      embers.minEmitBox = new Vector3(-0.45, -0.1, -0.45);
+      embers.maxEmitBox = new Vector3(0.45, 0.3, 0.45);
+      embers.direction1 = new Vector3(-0.12, 0.45, -0.1);
+      embers.direction2 = new Vector3(0.2, 1.1, 0.2);
+      embers.minLifeTime = 1.5;
+      embers.maxLifeTime = 4;
+      embers.minSize = 0.025;
+      embers.maxSize = 0.07;
+      embers.emitRate = 48;
+      embers.color1 = Color4.FromHexString("#ff7a32ee");
+      embers.color2 = Color4.FromHexString("#ff3b16aa");
+      embers.blendMode = ParticleSystem.BLENDMODE_ADD;
+      embers.start();
+      const mordorGlow = new PointLight("mordor-glow", worldPosition(87, 34, sampler(87, 34) + 0.8), scene);
+      mordorGlow.diffuse = Color3.FromHexString("#ff4a1e");
+      mordorGlow.intensity = 6.4;
+      mordorGlow.range = 4.8;
+
+      const mistTexture = makeParticleTexture(scene, "mist-particle", "rgba(215,220,208,.28)");
+      const mist = new ParticleSystem("valley-mist", 120, scene);
+      mist.particleTexture = mistTexture;
+      mist.emitter = new Vector3(0, 0.45, 0);
+      mist.minEmitBox = new Vector3(-7, -0.1, -3.9);
+      mist.maxEmitBox = new Vector3(7, 0.6, 3.9);
+      mist.direction1 = new Vector3(0.025, 0, -0.01);
+      mist.direction2 = new Vector3(0.08, 0.015, 0.02);
+      mist.minLifeTime = 16;
+      mist.maxLifeTime = 28;
+      mist.minSize = 0.8;
+      mist.maxSize = 2.6;
+      mist.emitRate = 4;
+      mist.color1 = new Color4(0.82, 0.84, 0.79, 0.06);
+      mist.color2 = new Color4(0.7, 0.74, 0.69, 0.02);
+      mist.start();
+
+      const birdMaterial = makePbr(scene, "bird-material", "#141814", 0, 0.9);
+      const birds: Array<{ root: TransformNode; wings: Mesh[]; speed: number; phase: number }> = [];
+      for (let index = 0; index < 11; index += 1) {
+        const root = new TransformNode(`bird-${index}`, scene);
+        root.position.set(-6.5 + index * 0.45, 2.7 + (index % 3) * 0.15, 2.4 + (index % 4) * 0.22);
+        const wings = [-1, 1].map((side) => {
+          const wing = MeshBuilder.CreatePlane(`bird-wing-${index}-${side}`, { width: 0.1, height: 0.035 }, scene);
+          wing.material = birdMaterial;
+          wing.position.x = side * 0.048;
+          wing.rotation.z = side * 0.18;
+          wing.parent = root;
+          return wing;
+        });
+        birds.push({ root, wings, speed: 0.12 + (index % 4) * 0.018, phase: index * 0.7 });
+      }
       let route = createRoute(scene, propsRef.current.locations, propsRef.current.journeyPath, propsRef.current.journeyColor, sampler);
       let routeKey = `${propsRef.current.journeyPath.join("-")}-${propsRef.current.journeyColor}`;
 
@@ -353,12 +707,14 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
       let lastMode: WorldMode | null = null;
       let lastQuality: QualityMode | null = null;
       let lastTime = performance.now();
+      let elapsed = 0;
 
       engine.runRenderLoop(() => {
         const current = propsRef.current;
         const now = performance.now();
         const delta = Math.min(0.05, (now - lastTime) / 1000);
         lastTime = now;
+        elapsed += delta;
         const focus = worldPosition(current.focus.x, current.focus.y, sampler(current.focus.x, current.focus.y));
         focus.x -= current.pan.x * 0.008 / current.zoom;
         focus.z -= current.pan.y * 0.006 / current.zoom;
@@ -378,6 +734,47 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
           marker.ring.scaling.setAll(selected ? 1.35 * pulse : 1);
           marker.beacon.position.y = 0.06 + (selected ? Math.sin(now * 0.003) * 0.045 : 0);
         }
+        landmarks.forEach((landmark) => {
+          const targetScale = current.zoom > 1.8 ? 1.08 : 0.82;
+          landmark.scaling = Vector3.Lerp(landmark.scaling, new Vector3(targetScale, targetScale, targetScale), Math.min(1, delta * 4));
+        });
+
+        const partyTarget = worldPosition(current.partyLocation.x, current.partyLocation.y, sampler(current.partyLocation.x, current.partyLocation.y) + 0.14);
+        const previousX = party.position.x;
+        const previousZ = party.position.z;
+        const travelSpeed = current.playing ? 1.7 : 7;
+        const travelBlend = 1 - Math.exp(-delta * travelSpeed);
+        party.position.x += (partyTarget.x - party.position.x) * travelBlend;
+        party.position.z += (partyTarget.z - party.position.z) * travelBlend;
+        const partyX = (party.position.x / WORLD_WIDTH + 0.5) * 100;
+        const partyY = (party.position.z / WORLD_DEPTH + 0.5) * 100;
+        party.position.y += (sampler(partyX, partyY) + 0.14 - party.position.y) * Math.min(1, delta * 5);
+        const travelX = party.position.x - previousX;
+        const travelZ = party.position.z - previousZ;
+        const moving = current.playing && Math.hypot(travelX, travelZ) > 0.0008;
+        if (moving) {
+          const heading = Math.atan2(travelX, travelZ);
+          party.rotation.y += Math.atan2(Math.sin(heading - party.rotation.y), Math.cos(heading - party.rotation.y)) * Math.min(1, delta * 4.5);
+        }
+        travelers.forEach((traveler, travelerIndex) => {
+          const stride = moving ? Math.sin(elapsed * 9.5 + travelerIndex * 1.8) : Math.sin(elapsed * 1.4 + travelerIndex) * 0.06;
+          traveler.legs.forEach((leg, legIndex) => { leg.rotation.x = stride * (legIndex === 0 ? 0.72 : -0.72); });
+          traveler.arms.forEach((arm, armIndex) => { arm.rotation.x = stride * (armIndex === 0 ? -0.58 : 0.58); });
+          traveler.root.position.y = moving ? Math.abs(stride) * 0.034 : 0;
+          traveler.root.rotation.x += ((moving ? 0.065 : 0) - traveler.root.rotation.x) * Math.min(1, delta * 6);
+        });
+
+        birds.forEach((bird) => {
+          bird.root.position.x += bird.speed * delta;
+          bird.root.position.z += Math.sin(elapsed * 0.22 + bird.phase) * delta * 0.025;
+          if (bird.root.position.x > 7.6) bird.root.position.x = -7.6;
+          const flap = Math.sin(elapsed * 8 + bird.phase) * 0.72;
+          bird.wings.forEach((wing, wingIndex) => { wing.rotation.y = flap * (wingIndex === 0 ? 1 : -1); });
+        });
+        water.position.y = -0.175 + Math.sin(elapsed * 0.45) * 0.006;
+        waterMaterial.alpha = 0.45 + Math.sin(elapsed * 0.3) * 0.025;
+        mordorGlow.intensity = 6.2 + Math.sin(elapsed * 2.4) * 1.1;
+        if (route) route.alpha = 0.76 + Math.sin(elapsed * 3) * 0.18;
 
         const nextRouteKey = `${current.journeyPath.join("-")}-${current.journeyColor}`;
         if (routeKey !== nextRouteKey) {
@@ -401,6 +798,10 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
           pipeline.bloomEnabled = current.quality !== "performance";
           lastQuality = current.quality;
         }
+        if (activeWeather !== current.weather) {
+          setWeather(weatherField, current.weather);
+          activeWeather = current.weather;
+        }
         if (lastMode !== current.mode) {
           const colors = modeColors(current.mode);
           scene.clearColor = Color4.FromHexString(`${colors.clear}ff`);
@@ -410,6 +811,9 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
           hemisphere.groundColor = Color3.FromHexString(colors.ground);
           scene.imageProcessingConfiguration.exposure = colors.exposure;
           terrainMaterial.albedoTexture = current.mode === "parchment" ? parchmentTexture : realisticTexture;
+          hemisphere.intensity = current.mode === "moonlit" ? 0.72 : current.mode === "shadow" ? 0.9 : 1.45;
+          sun.intensity = current.mode === "moonlit" ? 1.3 : current.mode === "shadow" ? 1.7 : 3.2;
+          mist.emitRate = current.mode === "shadow" ? 7 : current.mode === "moonlit" ? 5 : 4;
           lastMode = current.mode;
         }
         scene.render();
