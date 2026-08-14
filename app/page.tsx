@@ -169,7 +169,7 @@ export default function Home() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const [activeJourney, setActiveJourney] = useState(journeys[0]);
-  const [journeyOpen, setJourneyOpen] = useState(true);
+  const [journeyOpen, setJourneyOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });

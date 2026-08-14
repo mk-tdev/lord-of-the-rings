@@ -26,8 +26,8 @@ type TerrainSceneProps = {
 
 const WORLD_WIDTH = 14;
 const WORLD_HEIGHT = 7.88;
-const DISPLACEMENT = 1.65;
-const DISPLACEMENT_BIAS = -0.22;
+const DISPLACEMENT = 1.12;
+const DISPLACEMENT_BIAS = -0.2;
 
 function worldPosition(x: number, y: number) {
   return new THREE.Vector3((x / 100 - 0.5) * WORLD_WIDTH, (0.5 - y / 100) * WORLD_HEIGHT, 0);
@@ -124,7 +124,7 @@ export function TerrainScene(props: TerrainSceneProps) {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0d0a);
-    scene.fog = new THREE.FogExp2(0x11130f, 0.055);
+    scene.fog = new THREE.FogExp2(0x11130f, 0.036);
 
     const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
     camera.position.set(0, -5, 10);
@@ -154,18 +154,25 @@ export function TerrainScene(props: TerrainSceneProps) {
 
     const loader = new THREE.TextureLoader();
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-    const mapTexture = loader.load("/middle-earth-map.png");
+    const mapTexture = loader.load("/middle-earth-map-realistic.png");
     mapTexture.colorSpace = THREE.SRGBColorSpace;
     mapTexture.anisotropy = maxAnisotropy;
     const heightTexture = loader.load("/middle-earth-heightmap.png", (texture) => {
       const image = texture.image as HTMLImageElement;
       const canvas = document.createElement("canvas");
-      const sampleWidth = 512;
+      const sampleWidth = 640;
       const sampleHeight = Math.round(sampleWidth * (image.height / image.width));
       canvas.width = sampleWidth;
       canvas.height = sampleHeight;
       const context = canvas.getContext("2d", { willReadFrequently: true });
-      context?.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+      if (context) {
+        context.filter = "blur(4px)";
+        context.drawImage(image, -6, -6, sampleWidth + 12, sampleHeight + 12);
+        texture.image = canvas;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.needsUpdate = true;
+      }
       const pixels = context?.getImageData(0, 0, sampleWidth, sampleHeight).data;
       if (pixels) {
         sampleHeightRef.current = (x, y) => {
@@ -179,7 +186,7 @@ export function TerrainScene(props: TerrainSceneProps) {
       setReady(true);
     });
 
-    const terrainGeometry = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_HEIGHT, 256, 144);
+    const terrainGeometry = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_HEIGHT, 224, 126);
     const terrainMaterial = new THREE.MeshStandardMaterial({
       map: mapTexture,
       displacementMap: heightTexture,
@@ -191,6 +198,20 @@ export function TerrainScene(props: TerrainSceneProps) {
     const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
     terrain.receiveShadow = true;
     scene.add(terrain);
+
+    const waterMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x173b43,
+      transparent: true,
+      opacity: 0.44,
+      roughness: 0.22,
+      metalness: 0.08,
+      clearcoat: 0.72,
+      clearcoatRoughness: 0.2,
+      depthWrite: false,
+    });
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_WIDTH + 0.02, WORLD_HEIGHT + 0.02), waterMaterial);
+    water.position.z = -0.185;
+    scene.add(water);
 
     const underlay = new THREE.Mesh(
       new THREE.PlaneGeometry(WORLD_WIDTH + 0.3, WORLD_HEIGHT + 0.3),
@@ -360,11 +381,12 @@ export function TerrainScene(props: TerrainSceneProps) {
       focusPoint.x -= current.pan.x / 115;
       focusPoint.y += current.pan.y / 115;
       const distance = 1 / current.zoom;
+      const frameDistance = 11.5 / Math.min(camera.aspect, 1.15);
       target.lerp(new THREE.Vector3(focusPoint.x, focusPoint.y, 0.18), 1 - Math.exp(-delta * 2.6));
       desiredCamera.set(
         target.x + current.tilt.y * 0.055,
-        target.y - 4.5 * distance + current.tilt.x * 0.06,
-        8.8 * distance + 1.2,
+        target.y - frameDistance * 0.42 * distance + current.tilt.x * 0.06,
+        frameDistance * distance + 1.1,
       );
       camera.position.lerp(desiredCamera, 1 - Math.exp(-delta * 2.8));
       camera.lookAt(target.x, target.y + 0.45 * distance, 0.05);
@@ -397,6 +419,8 @@ export function TerrainScene(props: TerrainSceneProps) {
       }
       emberAttribute.needsUpdate = true;
       mordorGlow.intensity = 6.2 + Math.sin(elapsed * 2.4) * 1.1;
+      water.position.z = -0.185 + Math.sin(elapsed * 0.45) * 0.006;
+      waterMaterial.opacity = 0.41 + Math.sin(elapsed * 0.3) * 0.025;
       if (route) (route.material as THREE.LineDashedMaterial).opacity = 0.74 + Math.sin(elapsed * 3) * 0.2;
 
       renderer.render(scene, camera);
