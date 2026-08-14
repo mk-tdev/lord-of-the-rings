@@ -1,32 +1,29 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  AbstractEngine,
-  Color3,
-  Color4,
-  DefaultRenderingPipeline,
-  DirectionalLight,
-  DynamicTexture,
-  Engine,
-  FreeCamera,
-  HemisphericLight,
-  Mesh,
-  MeshBuilder,
-  ParticleSystem,
-  PBRMaterial,
-  PointLight,
-  PointerEventTypes,
-  RawTexture,
-  Scene,
-  ShadowGenerator,
-  StandardMaterial,
-  Texture,
-  TransformNode,
-  Vector3,
-  VertexData,
-  WebGPUEngine,
-} from "@babylonjs/core";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
+import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
+import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { Scene } from "@babylonjs/core/scene";
 import type { QualityMode, TerrainLocation, TerrainSceneProps, WeatherMode, WorldMode } from "./terrain-types";
 
 export type { QualityMode, TerrainLocation, WeatherMode, WorldMode } from "./terrain-types";
@@ -484,7 +481,10 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const propsRef = useRef(props);
   const [ready, setReady] = useState(false);
-  propsRef.current = props;
+
+  useEffect(() => {
+    propsRef.current = props;
+  }, [props]);
 
   useEffect(() => {
     const host = hostRef.current;

@@ -219,7 +219,9 @@ export default function Home() {
   const [worldMode, setWorldMode] = useState<WorldMode>("realms");
   const [weather, setWeather] = useState<WeatherMode>("clear");
   const [quality, setQuality] = useState<QualityMode>("high");
+  const [isDragging, setIsDragging] = useState(false);
   const drag = useRef({ active: false, x: 0, y: 0, ox: 0, oy: 0 });
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<Soundscape | null>(null);
 
   const filteredLocations = useMemo(() => {
@@ -299,6 +301,10 @@ export default function Home() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
 
   const toggleSound = () => {
     if (soundOn) {
@@ -424,7 +430,7 @@ export default function Home() {
         <section className="search-popover" aria-label="Search Middle-earth">
           <div className="search-input-wrap">
             <span aria-hidden="true">⌕</span>
-            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a realm, road, or ruin…" aria-label="Search locations" />
+            <input ref={searchInputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a realm, road, or ruin…" aria-label="Search locations" />
             <kbd>ESC</kbd>
           </div>
           <div className="search-results">
@@ -441,7 +447,7 @@ export default function Home() {
       )}
 
       <section
-        className={`map-viewport ${drag.current.active ? "dragging" : ""}`}
+        className={`map-viewport ${isDragging ? "dragging" : ""}`}
         onWheel={(event) => {
           event.preventDefault();
           setZoom((current) => Math.min(3.4, Math.max(0.9, current - event.deltaY * 0.001)));
@@ -449,6 +455,7 @@ export default function Home() {
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button")) return;
           drag.current = { active: true, x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y };
+          setIsDragging(true);
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
@@ -462,8 +469,8 @@ export default function Home() {
             y: ((event.clientX - rect.left) / rect.width - 0.5) * 9,
           });
         }}
-        onPointerUp={() => { drag.current.active = false; }}
-        onPointerLeave={() => { drag.current.active = false; setTilt({ x: 0, y: 0 }); }}
+        onPointerUp={() => { drag.current.active = false; setIsDragging(false); }}
+        onPointerLeave={() => { drag.current.active = false; setIsDragging(false); setTilt({ x: 0, y: 0 }); }}
         aria-label="Interactive map of Middle-earth"
       >
         <div className="map-glow" />

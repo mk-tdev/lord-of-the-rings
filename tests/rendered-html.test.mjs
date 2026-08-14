@@ -39,39 +39,45 @@ test("server-renders the interactive Middle-earth atlas shell", async () => {
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
 });
 
-test("keeps the WebGL terrain and port configuration integrated", async () => {
+test("keeps the Babylon WebGPU terrain and port configuration integrated", async () => {
   const [scene, page, css, layout, packageJson] = await Promise.all([
-    readFile(new URL("../app/TerrainScene.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/BabylonTerrainScene.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
 
-  assert.match(scene, /from "three"/);
-  assert.match(scene, /displacementMap:\s*heightTexture/);
+  assert.match(scene, /from "@babylonjs\/core\/Engines\/webgpuEngine"/);
+  assert.match(scene, /WebGPUEngine\.IsSupportedAsync/);
+  assert.match(scene, /new WebGPUEngine/);
+  assert.match(scene, /new Engine\(canvas/);
+  assert.match(scene, /VertexData\.ComputeNormals/);
+  assert.match(scene, /createTerrainMesh/);
   assert.match(scene, /middle-earth-map-realistic\.png/);
   assert.match(scene, /middle-earth-heightmap\.png/);
   assert.match(scene, /makeTraveler/);
   assert.match(scene, /TravelerRole/);
   assert.match(scene, /makeLandmark/);
-  assert.match(scene, /InstancedMesh/);
+  assert.match(scene, /createInstance/);
   assert.match(scene, /WeatherMode/);
   assert.match(scene, /QualityMode/);
-  assert.match(scene, /terrainGeometryHigh/);
-  assert.match(scene, /makeDetailNormalTexture/);
+  assert.match(scene, /DefaultRenderingPipeline/);
+  assert.match(scene, /ShadowGenerator/);
+  assert.match(scene, /ParticleSystem/);
+  assert.match(scene, /createDetailNormal/);
   assert.match(scene, /REGIONS/);
   assert.match(scene, /ensureRegion/);
   assert.match(page, /chapterNarration/);
   assert.match(page, /worldModes/);
-  assert.match(scene, /requestAnimationFrame/);
   assert.match(page, /<TerrainScene/);
-  assert.match(page, /lazy\(\(\) => import\("\.\/TerrainScene"\)/);
+  assert.match(page, /lazy\(\(\) => import\("\.\/BabylonTerrainScene"\)/);
   assert.match(page, /activeJourney\.path/);
   assert.match(css, /\.terrain-scene\.ready canvas/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(layout, /Middle-earth — An Interactive Atlas/);
-  assert.match(packageJson, /"three":/);
+  assert.match(packageJson, /"@babylonjs\/core":/);
+  assert.doesNotMatch(packageJson, /"three":/);
   assert.match(packageJson, /vinext dev --port 1111/);
   assert.match(packageJson, /vinext start --port 1111/);
   assert.doesNotMatch(packageJson, /--port 3000/);
