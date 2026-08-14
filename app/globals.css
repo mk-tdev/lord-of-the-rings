@@ -79,6 +79,13 @@ button { color: inherit; }
 .elevation-readout span { display: grid; }
 .elevation-readout small { color: #7f867b; font-family: Arial, sans-serif; font-size: 6px; letter-spacing: .15em; text-transform: uppercase; }
 .elevation-readout b { margin-top: 2px; color: #d4c5a0; font-family: Arial, sans-serif; font-size: 9px; font-weight: 400; letter-spacing: .12em; }
+.quality-toggle { position: absolute; z-index: 12; left: 28px; top: 150px; display: flex; align-items: center; gap: 7px; height: 29px; padding: 0 9px; border: 1px solid rgba(221,190,117,.28); background: rgba(13,17,13,.56); color: #a9aa9f; backdrop-filter: blur(8px); cursor: pointer; }
+.quality-toggle:hover { color: #e0c47f; border-color: rgba(221,190,117,.55); }
+.quality-toggle small { font-family: Arial, sans-serif; font-size: 6px; letter-spacing: .16em; text-transform: uppercase; }
+.quality-toggle b { color: #d7b967; font-family: Arial, sans-serif; font-size: 8px; font-weight: 500; letter-spacing: .14em; }
+.regional-status { position: absolute; z-index: 11; right: 29px; top: 205px; display: grid; justify-items: end; padding-right: 11px; border-right: 1px solid rgba(221,190,117,.42); pointer-events: none; animation: pop .45s ease both; }
+.regional-status small { color: #777f77; font-family: Arial, sans-serif; font-size: 6px; letter-spacing: .2em; text-transform: uppercase; }
+.regional-status b { margin-top: 3px; color: #d9caa7; font-size: 12px; font-weight: 400; letter-spacing: .07em; }
 .cinematic-status { position: absolute; z-index: 13; top: 105px; left: 50%; min-width: 280px; padding: 10px 22px 12px; transform: translateX(-50%); border-top: 1px solid rgba(219,183,101,.45); border-bottom: 1px solid rgba(219,183,101,.18); background: linear-gradient(90deg, transparent, rgba(10,14,11,.72), transparent); text-align: center; pointer-events: none; animation: chapter-in .7s ease both; }
 .cinematic-status span, .cinematic-status small { display: block; color: #a58f5d; font-family: Arial, sans-serif; font-size: 7px; letter-spacing: .22em; text-transform: uppercase; }
 .cinematic-status b { display: block; margin: 3px 0; color: #eee1c3; font-size: 22px; font-weight: 400; letter-spacing: .05em; }
@@ -159,6 +166,8 @@ kbd { padding: 3px 5px; border: 1px solid rgba(255,255,255,.12); color: #777e75;
   .zoom-controls { left: 13px; top: 46%; }
   .compass { right: 10px; top: 75px; transform: scale(.78); }
   .elevation-readout { top: 72px; left: 12px; transform: scale(.84); transform-origin: left top; }
+  .quality-toggle { top: 113px; left: 13px; }
+  .regional-status { top: 166px; right: 13px; }
   .cinematic-status { top: 74px; min-width: 230px; }
   .journey-dock { width: calc(100vw - 20px); padding: 15px 13px 14px; }
   .journey-heading { margin-bottom: 9px; }

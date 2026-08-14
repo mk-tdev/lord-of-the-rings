@@ -13,6 +13,7 @@ export type TerrainLocation = {
 
 export type WorldMode = "realms" | "moonlit" | "shadow" | "parchment";
 export type WeatherMode = "clear" | "rain" | "snow" | "ash";
+export type QualityMode = "performance" | "high" | "cinematic";
 
 type TerrainSceneProps = {
   locations: TerrainLocation[];
@@ -26,6 +27,7 @@ type TerrainSceneProps = {
   playing: boolean;
   mode: WorldMode;
   weather: WeatherMode;
+  quality: QualityMode;
   onSelect: (id: string) => void;
 };
 
@@ -74,6 +76,44 @@ function makeMistTexture() {
   context.fillStyle = gradient;
   context.fillRect(0, 0, 256, 128);
   return new THREE.CanvasTexture(canvas);
+}
+
+function makeDetailNormalTexture() {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const image = context.createImageData(size, size);
+  const heightAt = (x: number, y: number) => {
+    const coarse = Math.sin(x * 0.17) * Math.cos(y * 0.13);
+    const medium = Math.sin((x + y) * 0.41) * 0.48 + Math.cos((x - y) * 0.29) * 0.36;
+    const fine = Math.sin(x * 1.71 + y * 1.23) * 0.12 + Math.cos(x * 2.31 - y * 1.61) * 0.08;
+    return coarse * 0.42 + medium + fine;
+  };
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const left = heightAt((x - 1 + size) % size, y);
+      const right = heightAt((x + 1) % size, y);
+      const down = heightAt(x, (y - 1 + size) % size);
+      const up = heightAt(x, (y + 1) % size);
+      const normal = new THREE.Vector3((left - right) * 0.72, (down - up) * 0.72, 1).normalize();
+      const offset = (y * size + x) * 4;
+      image.data[offset] = (normal.x * 0.5 + 0.5) * 255;
+      image.data[offset + 1] = (normal.y * 0.5 + 0.5) * 255;
+      image.data[offset + 2] = normal.z * 255;
+      image.data[offset + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(30, 17);
+  texture.colorSpace = THREE.NoColorSpace;
+  texture.anisotropy = 8;
+  return texture;
 }
 
 type TravelerRole = "ranger" | "wizard" | "hobbit" | "scout";
@@ -343,7 +383,8 @@ export function TerrainScene(props: TerrainSceneProps) {
     const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
     camera.position.set(0, -5, 10);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 800 ? 1.5 : 2));
+    const pixelRatioFor = (quality: QualityMode) => Math.min(window.devicePixelRatio, quality === "performance" ? 1 : quality === "cinematic" ? 2.75 : window.innerWidth < 800 ? 1.75 : 2.1);
+    renderer.setPixelRatio(pixelRatioFor(props.quality));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.04;
@@ -356,7 +397,7 @@ export function TerrainScene(props: TerrainSceneProps) {
     const sun = new THREE.DirectionalLight(0xffe5b2, 3.1);
     sun.position.set(-5, -6, 11);
     sun.castShadow = true;
-    const shadowResolution = window.innerWidth < 800 ? 1024 : 2048;
+    const shadowResolution = props.quality === "performance" ? 1024 : props.quality === "cinematic" ? 4096 : 2048;
     sun.shadow.mapSize.set(shadowResolution, shadowResolution);
     sun.shadow.camera.left = -9;
     sun.shadow.camera.right = 9;
@@ -404,18 +445,27 @@ export function TerrainScene(props: TerrainSceneProps) {
       setReady(true);
     });
 
+    const detailNormalTexture = makeDetailNormalTexture();
+    if (detailNormalTexture) detailNormalTexture.anisotropy = maxAnisotropy;
     const terrainGeometry = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_HEIGHT, 224, 126);
+    const terrainGeometryHigh = new THREE.PlaneGeometry(WORLD_WIDTH, WORLD_HEIGHT, 448, 252);
     const terrainMaterial = new THREE.MeshStandardMaterial({
       map: mapTexture,
       displacementMap: heightTexture,
       displacementScale: DISPLACEMENT,
       displacementBias: DISPLACEMENT_BIAS,
+      normalMap: detailNormalTexture,
+      normalScale: new THREE.Vector2(0.58, 0.58),
       roughness: 0.88,
       metalness: 0.02,
     });
     const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
     terrain.receiveShadow = true;
     scene.add(terrain);
+    const terrainHigh = new THREE.Mesh(terrainGeometryHigh, terrainMaterial);
+    terrainHigh.receiveShadow = true;
+    terrainHigh.visible = false;
+    scene.add(terrainHigh);
 
     const waterMaterial = new THREE.MeshPhysicalMaterial({
       color: 0x173b43,
@@ -700,6 +750,7 @@ export function TerrainScene(props: TerrainSceneProps) {
     let elapsed = 0;
     let activeVisualMode: WorldMode | null = null;
     let activeWeather: WeatherMode | null = null;
+    let activeQuality: QualityMode | null = null;
     let animationFrame = 0;
     const target = new THREE.Vector3();
     const desiredCamera = new THREE.Vector3();
@@ -713,6 +764,17 @@ export function TerrainScene(props: TerrainSceneProps) {
       }
       elapsed += delta;
       const current = propsRef.current;
+      if (current.quality !== activeQuality) {
+        activeQuality = current.quality;
+        renderer.setPixelRatio(pixelRatioFor(current.quality));
+        const nextShadowResolution = current.quality === "performance" ? 1024 : current.quality === "cinematic" ? 4096 : 2048;
+        if (sun.shadow.mapSize.width !== nextShadowResolution) {
+          sun.shadow.mapSize.set(nextShadowResolution, nextShadowResolution);
+          sun.shadow.map?.dispose();
+          sun.shadow.map = null;
+        }
+        resize();
+      }
       if (current.mode !== activeVisualMode) {
         activeVisualMode = current.mode;
         terrainMaterial.map = current.mode === "parchment" ? parchmentTexture : mapTexture;
@@ -737,6 +799,19 @@ export function TerrainScene(props: TerrainSceneProps) {
       focusPoint.x -= current.pan.x / 115;
       focusPoint.y += current.pan.y / 115;
       const distance = 1 / current.zoom;
+      const useHighTerrain = current.quality !== "performance" && current.zoom >= 1.42;
+      terrain.visible = !useHighTerrain;
+      terrainHigh.visible = useHighTerrain;
+      terrainMaterial.normalScale.setScalar(current.quality === "cinematic" && current.zoom > 1.8 ? 1.28 : useHighTerrain ? 0.92 : 0.58);
+      markerGroups.forEach((group) => {
+        const location = group.userData.location as TerrainLocation;
+        const label = group.children.find((child) => child instanceof THREE.Sprite);
+        if (label) label.visible = current.zoom < 2.05 || location.id === current.partyLocation.id;
+      });
+      landmarkGroups.forEach((group) => {
+        const scale = current.zoom > 1.8 ? 1.08 : 0.82;
+        group.scale.setScalar(THREE.MathUtils.damp(group.scale.x, scale, 4, delta));
+      });
       const frameDistance = 11.5 / Math.min(camera.aspect, 1.15);
       target.lerp(new THREE.Vector3(focusPoint.x, focusPoint.y, 0.18), 1 - Math.exp(-delta * 2.6));
       desiredCamera.set(
@@ -843,6 +918,7 @@ export function TerrainScene(props: TerrainSceneProps) {
       });
       mapTexture.dispose();
       parchmentTexture.dispose();
+      detailNormalTexture?.dispose();
       heightTexture.dispose();
       renderer.dispose();
       host.removeChild(renderer.domElement);

@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WeatherMode, WorldMode } from "./TerrainScene";
+import type { QualityMode, WeatherMode, WorldMode } from "./TerrainScene";
 
 const TerrainScene = lazy(() => import("./TerrainScene").then((module) => ({ default: module.TerrainScene })));
 
@@ -196,6 +196,12 @@ const weatherModes: Array<{ id: WeatherMode; label: string; icon: string }> = [
   { id: "ash", label: "Ashfall", icon: "⁙" },
 ];
 
+const qualityModes: Array<{ id: QualityMode; label: string; short: string }> = [
+  { id: "performance", label: "Performance quality", short: "ECO" },
+  { id: "high", label: "High quality", short: "HD" },
+  { id: "cinematic", label: "Cinematic quality", short: "4K" },
+];
+
 export default function Home() {
   const [selected, setSelected] = useState<Location>(locations[0]);
   const [zoom, setZoom] = useState(1);
@@ -212,6 +218,7 @@ export default function Home() {
   const [cameraFocus, setCameraFocus] = useState({ x: 50, y: 50 });
   const [worldMode, setWorldMode] = useState<WorldMode>("realms");
   const [weather, setWeather] = useState<WeatherMode>("clear");
+  const [quality, setQuality] = useState<QualityMode>("high");
   const drag = useRef({ active: false, x: 0, y: 0, ox: 0, oy: 0 });
   const audioRef = useRef<Soundscape | null>(null);
 
@@ -386,8 +393,14 @@ export default function Home() {
     setWeather(weatherModes[(index + 1) % weatherModes.length].id);
   };
 
+  const cycleQuality = () => {
+    const index = qualityModes.findIndex((mode) => mode.id === quality);
+    setQuality(qualityModes[(index + 1) % qualityModes.length].id);
+  };
+
   const activeWorldMode = worldModes.find((mode) => mode.id === worldMode) ?? worldModes[0];
   const activeWeather = weatherModes.find((mode) => mode.id === weather) ?? weatherModes[0];
+  const activeQuality = qualityModes.find((mode) => mode.id === quality) ?? qualityModes[1];
 
   return (
     <main className={`world-shell mode-${worldMode} weather-${weather} ${playing ? "journey-active" : ""}`}>
@@ -431,7 +444,7 @@ export default function Home() {
         className={`map-viewport ${drag.current.active ? "dragging" : ""}`}
         onWheel={(event) => {
           event.preventDefault();
-          setZoom((current) => Math.min(2.5, Math.max(0.9, current - event.deltaY * 0.001)));
+          setZoom((current) => Math.min(3.4, Math.max(0.9, current - event.deltaY * 0.001)));
         }}
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest("button")) return;
@@ -467,6 +480,7 @@ export default function Home() {
             playing={playing}
             mode={worldMode}
             weather={weather}
+            quality={quality}
             onSelect={(id) => {
               const location = locations.find((item) => item.id === id);
               if (location) focusLocation(location);
@@ -481,12 +495,14 @@ export default function Home() {
         </div>
 
         <div className="zoom-controls" aria-label="Map zoom controls">
-          <button onClick={() => setZoom((current) => Math.min(2.5, current + 0.2))} aria-label="Zoom in">+</button>
+          <button onClick={() => setZoom((current) => Math.min(3.4, current + 0.2))} aria-label="Zoom in">+</button>
           <button onClick={() => setZoom((current) => Math.max(0.9, current - 0.2))} aria-label="Zoom out">−</button>
           <button onClick={resetView} aria-label="Reset map">⌾</button>
         </div>
         <div className="compass" aria-hidden="true"><b>N</b><span>✦</span><small>S</small></div>
         <div className="elevation-readout" aria-hidden="true"><i /><span><small>Terrain depth</small><b>2.4 km</b></span></div>
+        <button className="quality-toggle" onClick={cycleQuality} aria-label={`${activeQuality.label}. Change rendering quality`}><small>Render</small><b>{activeQuality.short}</b></button>
+        {zoom >= 1.72 && <div className="regional-status"><small>Regional detail</small><b>{selected.region}</b></div>}
         {playing && <div className="cinematic-status"><span>Chapter {step + 1}</span><b>{partyLocation.name}</b><small>{chapterNarration[partyLocation.id] ?? activeJourney.subtitle}</small></div>}
       </section>
 
