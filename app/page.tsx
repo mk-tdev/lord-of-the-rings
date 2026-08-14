@@ -159,7 +159,7 @@ const journeys: Journey[] = [
   },
 ];
 
-function JourneyCanvas({ journey, progress }: { journey: Journey; progress: number }) {
+function JourneyCanvas({ journey, progress, moving }: { journey: Journey; progress: number; moving: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -168,15 +168,23 @@ function JourneyCanvas({ journey, progress }: { journey: Journey; progress: numb
     const parent = canvas.parentElement;
     if (!parent) return;
 
-    const draw = () => {
+    let frame = 0;
+    let width = 0;
+    let height = 0;
+    let ratio = 1;
+    const resize = () => {
       const rect = parent.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.round(rect.width * ratio);
-      canvas.height = Math.round(rect.height * ratio);
+      width = rect.width;
+      height = rect.height;
+      ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+    };
+    const draw = (dashOffset = 0) => {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.scale(ratio, ratio);
-      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
       const points = journey.path
         .map((id) => locations.find((location) => location.id === id))
         .filter(Boolean) as Location[];
@@ -184,13 +192,13 @@ function JourneyCanvas({ journey, progress }: { journey: Journey; progress: numb
 
       ctx.beginPath();
       points.forEach((point, index) => {
-        const x = (point.x / 100) * rect.width;
-        const y = (point.y / 100) * rect.height;
+        const x = (point.x / 100) * width;
+        const y = (point.y / 100) * height;
         if (index === 0) ctx.moveTo(x, y);
         else {
           const previous = points[index - 1];
-          const px = (previous.x / 100) * rect.width;
-          const py = (previous.y / 100) * rect.height;
+          const px = (previous.x / 100) * width;
+          const py = (previous.y / 100) * height;
           const bend = index % 2 === 0 ? 22 : -22;
           ctx.quadraticCurveTo((px + x) / 2, (py + y) / 2 + bend, x, y);
         }
@@ -198,18 +206,27 @@ function JourneyCanvas({ journey, progress }: { journey: Journey; progress: numb
       ctx.setLineDash([7, 8]);
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = journey.color;
+      ctx.globalAlpha = Math.max(0.38, progress);
       ctx.shadowColor = journey.color;
       ctx.shadowBlur = 7;
-      const totalLength = Math.max(rect.width, rect.height) * 2.8;
-      ctx.lineDashOffset = totalLength * (1 - progress);
+      ctx.lineDashOffset = -dashOffset;
       ctx.stroke();
     };
 
+    resize();
     draw();
-    const observer = new ResizeObserver(draw);
+    const animate = (time: number) => {
+      draw(time / 22);
+      frame = window.requestAnimationFrame(animate);
+    };
+    if (moving) frame = window.requestAnimationFrame(animate);
+    const observer = new ResizeObserver(() => { resize(); draw(); });
     observer.observe(parent);
-    return () => observer.disconnect();
-  }, [journey, progress]);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [journey, moving, progress]);
 
   return <canvas ref={ref} className="journey-canvas" aria-hidden="true" />;
 }
@@ -227,8 +244,9 @@ export default function Home() {
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState(0);
   const [routeProgress, setRouteProgress] = useState(1);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const drag = useRef({ active: false, x: 0, y: 0, ox: 0, oy: 0 });
-  const audioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode } | null>(null);
+  const audioRef = useRef<{ context: AudioContext; source: AudioBufferSourceNode; rumble: OscillatorNode } | null>(null);
 
   const filteredLocations = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -238,11 +256,11 @@ export default function Home() {
     );
   }, [query]);
 
-  const focusLocation = useCallback((location: Location) => {
+  const focusLocation = useCallback((location: Location, revealLore = true) => {
     setSelected(location);
-    setPanelOpen(true);
+    setPanelOpen(revealLore);
     setSearchOpen(false);
-    setZoom((current) => Math.max(current, 1.35));
+    setZoom((current) => Math.max(current, revealLore ? 1.35 : 1.52));
     setOffset({ x: (50 - location.x) * 2.2, y: (50 - location.y) * 1.4 });
   }, []);
 
@@ -256,7 +274,7 @@ export default function Home() {
           return current;
         }
         const location = locations.find((item) => item.id === activeJourney.path[next]);
-        if (location) focusLocation(location);
+        if (location) focusLocation(location, false);
         setRouteProgress((next + 1) / activeJourney.path.length);
         return next;
       });
@@ -267,6 +285,7 @@ export default function Home() {
   useEffect(() => {
     return () => {
       audioRef.current?.source.stop();
+      audioRef.current?.rumble.stop();
       audioRef.current?.context.close();
     };
   }, []);
@@ -285,6 +304,7 @@ export default function Home() {
   const toggleSound = () => {
     if (soundOn) {
       audioRef.current?.source.stop();
+      audioRef.current?.rumble.stop();
       audioRef.current?.context.close();
       audioRef.current = null;
       setSoundOn(false);
@@ -303,8 +323,15 @@ export default function Home() {
     const gain = context.createGain();
     gain.gain.value = 0.035;
     source.connect(filter).connect(gain).connect(context.destination);
+    const rumble = context.createOscillator();
+    const rumbleGain = context.createGain();
+    rumble.type = "sine";
+    rumble.frequency.value = 42;
+    rumbleGain.gain.value = 0.018;
+    rumble.connect(rumbleGain).connect(context.destination);
     source.start();
-    audioRef.current = { context, source };
+    rumble.start();
+    audioRef.current = { context, source, rumble };
     setSoundOn(true);
   };
 
@@ -318,6 +345,12 @@ export default function Home() {
   };
 
   const togglePlay = () => {
+    if (!playing) {
+      setPanelOpen(false);
+      setJourneyOpen(false);
+      const current = locations.find((location) => location.id === activeJourney.path[step]);
+      if (current) focusLocation(current, false);
+    }
     if (!playing && step >= activeJourney.path.length - 1) {
       setStep(0);
       setRouteProgress(1 / activeJourney.path.length);
@@ -330,10 +363,13 @@ export default function Home() {
   const resetView = () => {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+    setTilt({ x: 0, y: 0 });
   };
 
+  const partyLocation = locations.find((location) => location.id === activeJourney.path[step]) ?? locations[0];
+
   return (
-    <main className="world-shell">
+    <main className={`world-shell ${playing ? "journey-active" : ""}`}>
       <header className="topbar">
         <button className="brand" onClick={resetView} aria-label="Reset map view">
           <span className="brand-ring" aria-hidden="true">✦</span>
@@ -381,34 +417,64 @@ export default function Home() {
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
-          if (!drag.current.active) return;
-          setOffset({ x: drag.current.ox + event.clientX - drag.current.x, y: drag.current.oy + event.clientY - drag.current.y });
+          if (drag.current.active) {
+            setOffset({ x: drag.current.ox + event.clientX - drag.current.x, y: drag.current.oy + event.clientY - drag.current.y });
+            return;
+          }
+          const rect = event.currentTarget.getBoundingClientRect();
+          setTilt({
+            x: ((event.clientY - rect.top) / rect.height - 0.5) * -7,
+            y: ((event.clientX - rect.left) / rect.width - 0.5) * 9,
+          });
         }}
         onPointerUp={() => { drag.current.active = false; }}
+        onPointerLeave={() => { drag.current.active = false; setTilt({ x: 0, y: 0 }); }}
         aria-label="Interactive map of Middle-earth"
       >
         <div className="map-glow" />
-        <div className="map-stage" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }}>
-          <img src="/middle-earth-map.png" alt="An illustrated fantasy map of Middle-earth from green western lands to the fires of Mordor" draggable={false} />
-          <div className="map-vignette" />
-          <JourneyCanvas journey={activeJourney} progress={routeProgress} />
-          {locations.map((location) => {
-            const isSelected = selected.id === location.id;
-            const isRoute = activeJourney.path.includes(location.id);
-            return (
-              <button
-                key={location.id}
-                className={`map-marker ${location.kind} ${isSelected ? "selected" : ""} ${isRoute ? "on-route" : ""}`}
-                style={{ left: `${location.x}%`, top: `${location.y}%` }}
-                onClick={() => focusLocation(location)}
-                aria-label={`Explore ${location.name}`}
-              >
-                <span className="marker-pulse" />
-                <span className="marker-core">✦</span>
-                <span className="marker-label"><b>{location.name}</b><small>{location.region}</small></span>
-              </button>
-            );
-          })}
+        <div className="map-perspective" style={{ transform: `perspective(1100px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}>
+          <div className="map-stage" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }}>
+            <img src="/middle-earth-map.png" alt="An illustrated fantasy map of Middle-earth from green western lands to the fires of Mordor" draggable={false} />
+            <div className="terrain-heightfield" aria-hidden="true">
+              <span className="ridge ridge-one" /><span className="ridge ridge-two" /><span className="ridge ridge-three" />
+              <span className="ridge ridge-four" /><span className="ridge ridge-five" /><span className="volcano-rise" />
+            </div>
+            <div className="map-vignette" />
+            <div className="mist-layer" aria-hidden="true"><i /><i /><i /></div>
+            <div className="ember-field" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <i key={index} />)}</div>
+            <JourneyCanvas journey={activeJourney} progress={routeProgress} moving={playing} />
+            <div
+              className={`traveling-party ${playing ? "marching" : "resting"}`}
+              style={{ left: `${partyLocation.x}%`, top: `${partyLocation.y}%` }}
+              role="img"
+              aria-label={`${activeJourney.name} traveling near ${partyLocation.name}`}
+            >
+              <span className="party-shadow" />
+              <span className="traveler ranger"><i /><b /><em /></span>
+              <span className="traveler wizard"><i /><b /><em /></span>
+              <span className="traveler hobbit hobbit-one"><i /><b /><em /></span>
+              <span className="traveler hobbit hobbit-two"><i /><b /><em /></span>
+              <span className="party-torch" />
+              <small>{playing ? "The company moves" : "The company rests"}</small>
+            </div>
+            {locations.map((location) => {
+              const isSelected = selected.id === location.id;
+              const isRoute = activeJourney.path.includes(location.id);
+              return (
+                <button
+                  key={location.id}
+                  className={`map-marker ${location.kind} ${isSelected ? "selected" : ""} ${isRoute ? "on-route" : ""}`}
+                  style={{ left: `${location.x}%`, top: `${location.y}%` }}
+                  onClick={() => focusLocation(location)}
+                  aria-label={`Explore ${location.name}`}
+                >
+                  <span className="marker-pulse" />
+                  <span className="marker-core">✦</span>
+                  <span className="marker-label"><b>{location.name}</b><small>{location.region}</small></span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="map-title">
@@ -423,6 +489,8 @@ export default function Home() {
           <button onClick={resetView} aria-label="Reset map">⌾</button>
         </div>
         <div className="compass" aria-hidden="true"><b>N</b><span>✦</span><small>S</small></div>
+        <div className="elevation-readout" aria-hidden="true"><i /><span><small>Terrain depth</small><b>2.4 km</b></span></div>
+        {playing && <div className="cinematic-status"><span>Chapter {step + 1}</span><b>{partyLocation.name}</b><small>{activeJourney.subtitle}</small></div>}
       </section>
 
       <aside className={`lore-panel ${panelOpen ? "open" : ""}`} aria-live="polite">
