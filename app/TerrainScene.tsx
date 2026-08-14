@@ -71,39 +71,141 @@ function makeMistTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-function makeTraveler(color: number, scale: number, hooded = false) {
+type TravelerRole = "ranger" | "wizard" | "hobbit" | "scout";
+
+function makeLimb(material: THREE.Material, length: number, radius: number) {
+  const pivot = new THREE.Group();
+  const limb = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.82, radius, length, 8), material);
+  limb.rotation.x = Math.PI / 2;
+  limb.position.z = -length / 2;
+  limb.castShadow = true;
+  pivot.add(limb);
+  return pivot;
+}
+
+function makeTraveler(role: TravelerRole, scale: number) {
   const group = new THREE.Group();
   group.scale.setScalar(scale);
-  const cloth = new THREE.MeshStandardMaterial({ color, roughness: 0.95 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0x8b6849, roughness: 1 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x151712, roughness: 1 });
+  const palettes = {
+    ranger: { cloth: 0x263b2e, cloak: 0x18271f, leather: 0x4b3524, hair: 0x271d16, skin: 0x9a7455 },
+    wizard: { cloth: 0x73766d, cloak: 0x555b55, leather: 0x574631, hair: 0xb8b3a5, skin: 0xa98566 },
+    hobbit: { cloth: 0x69432a, cloak: 0x31513b, leather: 0x5b3821, hair: 0x4b2b18, skin: 0xa87d59 },
+    scout: { cloth: 0x4b5c35, cloak: 0x35452e, leather: 0x6a4328, hair: 0x382416, skin: 0xa77b58 },
+  }[role];
+  const cloth = new THREE.MeshStandardMaterial({ color: palettes.cloth, roughness: 0.98 });
+  const cloakMaterial = new THREE.MeshStandardMaterial({ color: palettes.cloak, roughness: 1, side: THREE.DoubleSide });
+  const leather = new THREE.MeshStandardMaterial({ color: palettes.leather, roughness: 0.88 });
+  const skin = new THREE.MeshStandardMaterial({ color: palettes.skin, roughness: 0.94 });
+  const hair = new THREE.MeshStandardMaterial({ color: palettes.hair, roughness: 1 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x171712, roughness: 0.9 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xb7b3a1, roughness: 0.34, metalness: 0.76 });
 
-  const body = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.48, 7), cloth);
-  body.position.z = 0.45;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.15, 0.43, 10), cloth);
+  body.position.z = 0.5;
   body.rotation.x = Math.PI / 2;
+  body.castShadow = true;
   group.add(body);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 8, 6), hooded ? cloth : skin);
-  head.position.z = 0.79;
+  const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 7), cloth);
+  shoulders.scale.set(1.15, 0.72, 0.66);
+  shoulders.position.z = 0.7;
+  shoulders.castShadow = true;
+  group.add(shoulders);
+
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.122, 0.018, 6, 16), leather);
+  belt.position.z = 0.38;
+  group.add(belt);
+
+  const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.58, 9, 1, true), cloakMaterial);
+  cloak.rotation.x = Math.PI / 2;
+  cloak.position.set(0, 0.055, 0.49);
+  cloak.castShadow = true;
+  group.add(cloak);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 9), skin);
+  head.scale.set(0.92, 0.88, 1.08);
+  head.position.z = 0.87;
+  head.castShadow = true;
   group.add(head);
 
-  if (hooded) {
-    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.25, 8), cloth);
-    hood.position.z = 0.79;
-    hood.rotation.x = Math.PI / 2;
-    group.add(hood);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.026, 7, 5), skin);
+  nose.scale.set(0.75, 1.2, 0.8);
+  nose.position.set(0, -0.1, 0.865);
+  group.add(nose);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.011, 6, 4), dark);
+    eye.position.set(side * 0.039, -0.09, 0.9);
+    group.add(eye);
   }
 
-  const legs: THREE.Mesh[] = [];
+  const hairCap = new THREE.Mesh(new THREE.SphereGeometry(0.112, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.58), hair);
+  hairCap.rotation.x = Math.PI;
+  hairCap.position.z = 0.955;
+  group.add(hairCap);
+
+  const arms: THREE.Group[] = [];
   for (const side of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.035, 0.32, 6), dark);
-    leg.position.set(side * 0.055, 0, 0.15);
-    leg.rotation.x = Math.PI / 2;
-    leg.userData.phase = side;
+    const arm = makeLimb(role === "wizard" ? cloth : leather, 0.34, 0.036);
+    arm.position.set(side * 0.145, -0.005, 0.69);
+    arms.push(arm);
+    group.add(arm);
+  }
+
+  const legs: THREE.Group[] = [];
+  for (const side of [-1, 1]) {
+    const leg = makeLimb(dark, role === "hobbit" || role === "scout" ? 0.27 : 0.34, 0.043);
+    leg.position.set(side * 0.065, 0, 0.35);
     legs.push(leg);
     group.add(leg);
+    const boot = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 5), role === "hobbit" || role === "scout" ? skin : leather);
+    boot.scale.set(0.9, 1.45, 0.62);
+    boot.position.set(side * 0.065, -0.038, role === "hobbit" || role === "scout" ? 0.07 : 0.015);
+    group.add(boot);
   }
-  group.userData.legs = legs;
+
+  if (role === "ranger") {
+    const sword = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, 0.66, 7), metal);
+    sword.rotation.set(Math.PI / 2, 0, -0.38);
+    sword.position.set(0.14, 0.09, 0.57);
+    group.add(sword);
+    const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.04, 0.46, 8), leather);
+    quiver.rotation.x = Math.PI / 2;
+    quiver.position.set(-0.12, 0.12, 0.61);
+    group.add(quiver);
+  }
+
+  if (role === "wizard") {
+    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.145, 0.38, 12), cloakMaterial);
+    hat.rotation.x = Math.PI / 2;
+    hat.position.z = 1.12;
+    group.add(hat);
+    const beard = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.31, 10), hair);
+    beard.rotation.x = Math.PI / 2;
+    beard.position.set(0, -0.08, 0.75);
+    group.add(beard);
+    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 1.2, 8), leather);
+    staff.rotation.x = Math.PI / 2;
+    staff.position.set(-0.25, -0.03, 0.56);
+    group.add(staff);
+    const staffLight = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 1), new THREE.MeshBasicMaterial({ color: 0xe9d79c, toneMapped: false }));
+    staffLight.position.set(-0.25, -0.03, 1.17);
+    group.add(staffLight);
+  }
+
+  if (role === "hobbit" || role === "scout") {
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.11, 0.27), leather);
+    pack.position.set(0, 0.13, 0.52);
+    pack.castShadow = true;
+    group.add(pack);
+    for (let index = 0; index < 7; index += 1) {
+      const curl = new THREE.Mesh(new THREE.SphereGeometry(0.039, 6, 5), hair);
+      const angle = (index / 7) * Math.PI * 2;
+      curl.position.set(Math.cos(angle) * 0.085, Math.sin(angle) * 0.07, 0.96 + (index % 2) * 0.025);
+      group.add(curl);
+    }
+  }
+
+  group.userData.limbs = { legs, arms };
   return group;
 }
 
@@ -255,15 +357,15 @@ export function TerrainScene(props: TerrainSceneProps) {
     }
 
     const party = new THREE.Group();
-    const travelerSpecs: Array<[number, number, boolean, number, number]> = [
-      [0x2f4935, 1.05, true, -0.22, 0.02],
-      [0x777768, 1.18, false, 0.02, 0.05],
-      [0x6b4529, 0.72, true, 0.22, -0.04],
-      [0x475935, 0.72, true, 0.38, 0.06],
+    const travelerSpecs: Array<[TravelerRole, number, number, number]> = [
+      ["ranger", 1.04, -0.28, 0.02],
+      ["wizard", 1.08, 0, 0.06],
+      ["hobbit", 0.8, 0.25, -0.04],
+      ["scout", 0.78, 0.45, 0.08],
     ];
     const travelers: THREE.Group[] = [];
-    for (const [color, scale, hooded, x, y] of travelerSpecs) {
-      const traveler = makeTraveler(color, scale, hooded);
+    for (const [role, scale, x, y] of travelerSpecs) {
+      const traveler = makeTraveler(role, scale);
       traveler.position.set(x, y, 0);
       travelers.push(traveler);
       party.add(traveler);
@@ -273,7 +375,7 @@ export function TerrainScene(props: TerrainSceneProps) {
     party.add(torch);
     const partyStart = worldPosition(props.partyLocation.x, props.partyLocation.y);
     party.position.set(partyStart.x, partyStart.y, 0.2);
-    party.scale.setScalar(0.48);
+    party.scale.setScalar(0.7);
     party.rotation.x = 0;
     scene.add(party);
 
@@ -393,17 +495,27 @@ export function TerrainScene(props: TerrainSceneProps) {
 
       const partyTarget = worldPosition(current.partyLocation.x, current.partyLocation.y);
       const travelSpeed = current.playing ? 1.7 : 7;
+      const previousPartyX = party.position.x;
+      const previousPartyY = party.position.y;
       party.position.x = THREE.MathUtils.damp(party.position.x, partyTarget.x, travelSpeed, delta);
       party.position.y = THREE.MathUtils.damp(party.position.y, partyTarget.y, travelSpeed, delta);
+      const travelX = party.position.x - previousPartyX;
+      const travelY = party.position.y - previousPartyY;
+      const isMoving = current.playing && Math.hypot(travelX, travelY) > 0.0008;
+      if (isMoving) {
+        const heading = Math.atan2(travelX, -travelY);
+        party.rotation.z = THREE.MathUtils.damp(party.rotation.z, heading, 4.5, delta);
+      }
       const partyX = ((party.position.x / WORLD_WIDTH) + 0.5) * 100;
       const partyY = (0.5 - party.position.y / WORLD_HEIGHT) * 100;
       party.position.z = THREE.MathUtils.damp(party.position.z, sampleHeightRef.current(partyX, partyY) + 0.18, 5, delta);
-      party.rotation.z = Math.sin(elapsed * 1.7) * 0.025;
       travelers.forEach((traveler, travelerIndex) => {
-        const stride = current.playing ? Math.sin(elapsed * 10 + travelerIndex * 1.8) : 0;
-        const legs = traveler.userData.legs as THREE.Mesh[];
-        legs.forEach((leg, legIndex) => { leg.rotation.y = stride * (legIndex === 0 ? 0.75 : -0.75); });
-        traveler.position.z = Math.abs(stride) * 0.035;
+        const stride = isMoving ? Math.sin(elapsed * 9.5 + travelerIndex * 1.8) : Math.sin(elapsed * 1.4 + travelerIndex) * 0.06;
+        const limbs = traveler.userData.limbs as { legs: THREE.Group[]; arms: THREE.Group[] };
+        limbs.legs.forEach((leg, legIndex) => { leg.rotation.x = stride * (legIndex === 0 ? 0.72 : -0.72); });
+        limbs.arms.forEach((arm, armIndex) => { arm.rotation.x = stride * (armIndex === 0 ? -0.58 : 0.58); });
+        traveler.position.z = isMoving ? Math.abs(stride) * 0.034 : 0;
+        traveler.rotation.x = THREE.MathUtils.damp(traveler.rotation.x, isMoving ? 0.065 : 0, 6, delta);
       });
 
       mistSprites.forEach((sprite, index) => {
