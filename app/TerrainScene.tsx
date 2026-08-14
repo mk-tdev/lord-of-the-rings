@@ -343,7 +343,7 @@ export function TerrainScene(props: TerrainSceneProps) {
     const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
     camera.position.set(0, -5, 10);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth < 800 ? 1.5 : 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.04;
@@ -356,7 +356,8 @@ export function TerrainScene(props: TerrainSceneProps) {
     const sun = new THREE.DirectionalLight(0xffe5b2, 3.1);
     sun.position.set(-5, -6, 11);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const shadowResolution = window.innerWidth < 800 ? 1024 : 2048;
+    sun.shadow.mapSize.set(shadowResolution, shadowResolution);
     sun.shadow.camera.left = -9;
     sun.shadow.camera.right = 9;
     sun.shadow.camera.top = 7;
@@ -706,6 +707,10 @@ export function TerrainScene(props: TerrainSceneProps) {
       const now = performance.now();
       const delta = Math.min((now - previousTime) / 1000, 0.05);
       previousTime = now;
+      if (document.hidden) {
+        animationFrame = window.requestAnimationFrame(animate);
+        return;
+      }
       elapsed += delta;
       const current = propsRef.current;
       if (current.mode !== activeVisualMode) {
@@ -830,6 +835,10 @@ export function TerrainScene(props: TerrainSceneProps) {
           const material = object.material as THREE.Material | THREE.Material[];
           if (Array.isArray(material)) material.forEach((item) => item.dispose());
           else material?.dispose();
+        }
+        if (object instanceof THREE.Sprite) {
+          object.material.map?.dispose();
+          object.material.dispose();
         }
       });
       mapTexture.dispose();

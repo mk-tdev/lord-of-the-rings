@@ -61,6 +61,7 @@ test("keeps the WebGL terrain and port configuration integrated", async () => {
   assert.match(page, /worldModes/);
   assert.match(scene, /requestAnimationFrame/);
   assert.match(page, /<TerrainScene/);
+  assert.match(page, /lazy\(\(\) => import\("\.\/TerrainScene"\)/);
   assert.match(page, /activeJourney\.path/);
   assert.match(css, /\.terrain-scene\.ready canvas/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);

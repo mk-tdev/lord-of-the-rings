@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TerrainScene, type WeatherMode, type WorldMode } from "./TerrainScene";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WeatherMode, WorldMode } from "./TerrainScene";
+
+const TerrainScene = lazy(() => import("./TerrainScene").then((module) => ({ default: module.TerrainScene })));
 
 type Location = {
   id: string;
@@ -452,23 +454,25 @@ export default function Home() {
         aria-label="Interactive map of Middle-earth"
       >
         <div className="map-glow" />
-        <TerrainScene
-          locations={locations}
-          focus={cameraFocus}
-          pan={offset}
-          zoom={zoom}
-          tilt={tilt}
-          journeyPath={activeJourney.path}
-          journeyColor={activeJourney.color}
-          partyLocation={partyLocation}
-          playing={playing}
-          mode={worldMode}
-          weather={weather}
-          onSelect={(id) => {
-            const location = locations.find((item) => item.id === id);
-            if (location) focusLocation(location);
-          }}
-        />
+        <Suspense fallback={<div className="terrain-scene loading" aria-label="Loading three-dimensional terrain"><div className="terrain-loading"><span /><small>Summoning Middle-earth…</small></div></div>}>
+          <TerrainScene
+            locations={locations}
+            focus={cameraFocus}
+            pan={offset}
+            zoom={zoom}
+            tilt={tilt}
+            journeyPath={activeJourney.path}
+            journeyColor={activeJourney.color}
+            partyLocation={partyLocation}
+            playing={playing}
+            mode={worldMode}
+            weather={weather}
+            onSelect={(id) => {
+              const location = locations.find((item) => item.id === id);
+              if (location) focusLocation(location);
+            }}
+          />
+        </Suspense>
 
         <div className="map-title">
           <small>Explore the realms of</small>
