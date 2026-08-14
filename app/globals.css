@@ -57,6 +57,7 @@ button { color: inherit; }
 
 .map-title { position: absolute; z-index: 12; top: 16%; left: 50%; transform: translateX(-50%); width: min(620px, 70vw); text-align: center; pointer-events: none; text-shadow: 0 2px 25px rgba(0,0,0,.9); animation: title-in 1.2s ease both; transition: opacity .5s ease, transform .5s ease; }
 .journey-active .map-title { opacity: 0; transform: translate(-50%, -16px); }
+.detail-active .map-title { opacity: 0; transform: translate(-50%, -18px) scale(.96); }
 @keyframes title-in { from { opacity: 0; transform: translate(-50%, 14px); } }
 .map-title small { color: #c7b88f; font-family: Arial, sans-serif; font-size: 9px; letter-spacing: .42em; text-transform: uppercase; }
 .map-title h1 { margin: 10px 0 6px; font-size: clamp(45px, 5.4vw, 78px); line-height: .9; font-weight: 400; letter-spacing: .04em; }

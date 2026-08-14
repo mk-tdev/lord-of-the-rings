@@ -403,7 +403,7 @@ export default function Home() {
   const activeQuality = qualityModes.find((mode) => mode.id === quality) ?? qualityModes[1];
 
   return (
-    <main className={`world-shell mode-${worldMode} weather-${weather} ${playing ? "journey-active" : ""}`}>
+    <main className={`world-shell mode-${worldMode} weather-${weather} ${playing ? "journey-active" : ""} ${zoom >= 1.72 ? "detail-active" : ""}`}>
       <header className="topbar">
         <button className="brand" onClick={resetView} aria-label="Reset map view">
           <span className="brand-ring" aria-hidden="true">✦</span>
@@ -503,7 +503,7 @@ export default function Home() {
         <div className="compass" aria-hidden="true"><b>N</b><span>✦</span><small>S</small></div>
         <div className="elevation-readout" aria-hidden="true"><i /><span><small>Terrain depth</small><b>2.4 km</b></span></div>
         <button className="quality-toggle" onClick={cycleQuality} aria-label={`${activeQuality.label}. Change rendering quality`}><small>Render</small><b>{activeQuality.short}</b></button>
-        {zoom >= 1.72 && <div className="regional-status"><small>Regional detail</small><b>{selected.region}</b></div>}
+        {zoom >= 1.72 && <div className="regional-status"><small>{quality === "cinematic" ? "Cinematic terrain" : "Regional detail"}</small><b>{selected.region}</b></div>}
         {playing && <div className="cinematic-status"><span>Chapter {step + 1}</span><b>{partyLocation.name}</b><small>{chapterNarration[partyLocation.id] ?? activeJourney.subtitle}</small></div>}
       </section>
 

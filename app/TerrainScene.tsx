@@ -874,10 +874,11 @@ export function TerrainScene(props: TerrainSceneProps) {
       focusPoint.x -= current.pan.x / 115;
       focusPoint.y += current.pan.y / 115;
       const distance = 1 / current.zoom;
+      const diveStrength = THREE.MathUtils.smoothstep(current.zoom, 1.72, 3.2);
       const useHighTerrain = current.quality !== "performance" && current.zoom >= 1.42;
       terrain.visible = !useHighTerrain;
       terrainHigh.visible = useHighTerrain;
-      const regionalDetailActive = current.quality !== "performance" && current.zoom >= 1.72;
+      const regionalDetailActive = current.quality !== "performance" && current.mode !== "parchment" && current.zoom >= 1.72;
       const desiredRegion = regionalDetailActive ? REGIONS.find((region) => region.locationIds.includes(current.focusLocationId)) ?? null : null;
       if (desiredRegion) ensureRegion(desiredRegion);
       regionalMeshes.forEach((entry, id) => {
@@ -896,14 +897,15 @@ export function TerrainScene(props: TerrainSceneProps) {
         group.scale.setScalar(THREE.MathUtils.damp(group.scale.x, scale, 4, delta));
       });
       const frameDistance = 11.5 / Math.min(camera.aspect, 1.15);
-      target.lerp(new THREE.Vector3(focusPoint.x, focusPoint.y, 0.18), 1 - Math.exp(-delta * 2.6));
+      const focusElevation = sampleHeightRef.current(current.focus.x, current.focus.y);
+      target.lerp(new THREE.Vector3(focusPoint.x, focusPoint.y, 0.18 + focusElevation * diveStrength * 0.72), 1 - Math.exp(-delta * 2.6));
       desiredCamera.set(
         target.x + current.tilt.y * 0.055,
-        target.y - frameDistance * 0.42 * distance + current.tilt.x * 0.06,
-        frameDistance * distance + 1.1,
+        target.y - frameDistance * (0.42 + diveStrength * 0.2) * distance + current.tilt.x * 0.06,
+        frameDistance * distance * (1 - diveStrength * 0.18) + 1.1 + focusElevation * diveStrength * 0.28,
       );
       camera.position.lerp(desiredCamera, 1 - Math.exp(-delta * 2.8));
-      camera.lookAt(target.x, target.y + 0.45 * distance, 0.05);
+      camera.lookAt(target.x, target.y + 0.45 * distance * (1 - diveStrength), target.z - diveStrength * 0.05);
 
       const partyTarget = worldPosition(current.partyLocation.x, current.partyLocation.y);
       const travelSpeed = current.playing ? 1.7 : 7;
