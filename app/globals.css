@@ -48,8 +48,6 @@ button { color: inherit; }
 .terrain-scene.ready .terrain-loading { opacity: 0; }
 .terrain-loading span { width: 34px; height: 34px; border: 1px solid rgba(215,175,93,.16); border-top-color: #d7af5d; border-radius: 50%; animation: terrain-spin 1.3s linear infinite; }
 .terrain-loading small { font-family: Arial, sans-serif; font-size: 8px; letter-spacing: .25em; text-transform: uppercase; }
-.terrain-loading.terrain-failed { pointer-events: auto; }
-.terrain-loading.terrain-failed button { padding: 9px 16px; border: 1px solid rgba(215,175,93,.5); border-radius: 3px; background: rgba(215,175,93,.1); color: #e4c981; cursor: pointer; font-family: Arial, sans-serif; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; }
 @keyframes terrain-spin { to { transform: rotate(360deg); } }
 .map-glow { position: absolute; z-index: 3; inset: 0; pointer-events: none; background: radial-gradient(circle at 87% 34%, rgba(185,55,20,.18), transparent 18%), radial-gradient(circle at 18% 38%, rgba(155,190,103,.07), transparent 23%), radial-gradient(circle at 50% 45%, transparent 36%, rgba(2,4,3,.52) 100%); mix-blend-mode: screen; box-shadow: inset 0 0 150px rgba(3,5,4,.62); }
 .mode-moonlit .map-glow { background: radial-gradient(circle at 73% 12%, rgba(143,184,225,.23), transparent 23%), radial-gradient(circle at 50% 45%, transparent 30%, rgba(1,6,13,.72) 100%); mix-blend-mode: screen; }

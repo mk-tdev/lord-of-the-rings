@@ -14,10 +14,10 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.21.2",
     "drizzle-orm": "0.45.2",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

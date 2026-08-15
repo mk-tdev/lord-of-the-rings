@@ -1,9 +1,9 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { QualityMode, WeatherMode, WorldMode } from "./terrain-types";
+import type { QualityMode, WeatherMode, WorldMode } from "./TerrainScene";
 
-const TerrainScene = lazy(() => import("./BabylonTerrainScene").then((module) => ({ default: module.BabylonTerrainScene })));
+const TerrainScene = lazy(() => import("./TerrainScene").then((module) => ({ default: module.TerrainScene })));
 
 type Location = {
   id: string;
