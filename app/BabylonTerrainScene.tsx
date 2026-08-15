@@ -470,24 +470,12 @@ function createRoute(scene: Scene, locations: TerrainLocation[], path: string[],
   return route;
 }
 
-function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T) {
-  return Promise.race([
-    promise,
-    new Promise<T>((resolve) => window.setTimeout(() => resolve(fallback), timeoutMs)),
-  ]);
-}
-
 async function createEngine(canvas: HTMLCanvasElement): Promise<AbstractEngine> {
-  const webGpuSupported = await settleWithin(WebGPUEngine.IsSupportedAsync, 1800, false);
-  if (webGpuSupported) {
+  const wantsWebGpu = new URLSearchParams(window.location.search).get("renderer") === "webgpu";
+  if (wantsWebGpu && await WebGPUEngine.IsSupportedAsync) {
     const webGpu = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true });
-    try {
-      const initialized = await settleWithin(webGpu.initAsync().then(() => true).catch(() => false), 2800, false);
-      if (initialized) return webGpu;
-    } catch {
-      // Some drivers advertise WebGPU before a usable device can be created.
-    }
-    webGpu.dispose();
+    await webGpu.initAsync();
+    return webGpu;
   }
   return new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: true, powerPreference: "high-performance" }, true);
 }
