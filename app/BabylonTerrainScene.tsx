@@ -6,6 +6,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
+import "@babylonjs/core/Culling/ray";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
@@ -19,6 +20,7 @@ import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import "@babylonjs/core/Meshes/instancedMesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
@@ -660,11 +662,12 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
       mist.direction2 = new Vector3(0.08, 0.015, 0.02);
       mist.minLifeTime = 16;
       mist.maxLifeTime = 28;
-      mist.minSize = 0.8;
-      mist.maxSize = 2.6;
-      mist.emitRate = 4;
-      mist.color1 = new Color4(0.82, 0.84, 0.79, 0.06);
-      mist.color2 = new Color4(0.7, 0.74, 0.69, 0.02);
+      mist.minSize = 0.45;
+      mist.maxSize = 1.35;
+      mist.emitRate = 1.2;
+      mist.color1 = new Color4(0.82, 0.84, 0.79, 0.025);
+      mist.color2 = new Color4(0.7, 0.74, 0.69, 0.008);
+      mist.blendMode = ParticleSystem.BLENDMODE_STANDARD;
       mist.start();
 
       const birdMaterial = makePbr(scene, "bird-material", "#141814", 0, 0.9);
@@ -830,7 +833,7 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
           terrainMaterial.albedoTexture = current.mode === "parchment" ? parchmentTexture : realisticTexture;
           hemisphere.intensity = current.mode === "moonlit" ? 0.72 : current.mode === "shadow" ? 0.9 : 1.45;
           sun.intensity = current.mode === "moonlit" ? 1.3 : current.mode === "shadow" ? 1.7 : 3.2;
-          mist.emitRate = current.mode === "shadow" ? 7 : current.mode === "moonlit" ? 5 : 4;
+          mist.emitRate = current.mode === "shadow" ? 2.2 : current.mode === "moonlit" ? 1.6 : 1.2;
           lastMode = current.mode;
         }
         scene.render();
