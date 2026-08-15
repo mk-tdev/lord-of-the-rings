@@ -55,8 +55,22 @@ function worldPosition(x: number, y: number, height = 0) {
   return new Vector3((x / 100 - 0.5) * WORLD_WIDTH, height, (y / 100 - 0.5) * WORLD_DEPTH);
 }
 
-function loadHeightSampler(path: string): Promise<HeightSampler> {
-  return new Promise((resolve, reject) => {
+function proceduralHeight(x: number, y: number) {
+  const mountains = Math.sin(x * 0.12) * Math.cos(y * 0.09) * 0.18;
+  const ridges = Math.max(0, Math.sin((x + y) * 0.19)) * 0.16;
+  return Math.max(DISPLACEMENT_BIAS, mountains + ridges + 0.08);
+}
+
+function loadHeightSampler(path: string, timeoutMs = 4500): Promise<HeightSampler> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (sampler: HeightSampler) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(sampler);
+    };
+    const timeout = window.setTimeout(() => finish(proceduralHeight), timeoutMs);
     const image = new Image();
     image.onload = () => {
       const width = 640;
@@ -65,17 +79,17 @@ function loadHeightSampler(path: string): Promise<HeightSampler> {
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return reject(new Error("Unable to sample terrain heightmap"));
+      if (!context) return finish(proceduralHeight);
       context.filter = "blur(3px)";
       context.drawImage(image, -5, -5, width + 10, height + 10);
       const pixels = context.getImageData(0, 0, width, height).data;
-      resolve((x, y) => {
+      finish((x, y) => {
         const px = Math.min(width - 1, Math.max(0, Math.round((x / 100) * (width - 1))));
         const py = Math.min(height - 1, Math.max(0, Math.round((y / 100) * (height - 1))));
         return (pixels[(py * width + px) * 4] / 255) * DISPLACEMENT + DISPLACEMENT_BIAS;
       });
     };
-    image.onerror = () => reject(new Error(`Unable to load ${path}`));
+    image.onerror = () => finish(proceduralHeight);
     image.src = path;
   });
 }
@@ -456,11 +470,24 @@ function createRoute(scene: Scene, locations: TerrainLocation[], path: string[],
   return route;
 }
 
+function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T) {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => window.setTimeout(() => resolve(fallback), timeoutMs)),
+  ]);
+}
+
 async function createEngine(canvas: HTMLCanvasElement): Promise<AbstractEngine> {
-  if (await WebGPUEngine.IsSupportedAsync) {
-    const engine = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true });
-    await engine.initAsync();
-    return engine;
+  const webGpuSupported = await settleWithin(WebGPUEngine.IsSupportedAsync, 1800, false);
+  if (webGpuSupported) {
+    const webGpu = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true });
+    try {
+      const initialized = await settleWithin(webGpu.initAsync().then(() => true).catch(() => false), 2800, false);
+      if (initialized) return webGpu;
+    } catch {
+      // Some drivers advertise WebGPU before a usable device can be created.
+    }
+    webGpu.dispose();
   }
   return new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: true, powerPreference: "high-performance" }, true);
 }
@@ -481,6 +508,7 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const propsRef = useRef(props);
   const [ready, setReady] = useState(false);
+  const [failure, setFailure] = useState(false);
 
   useEffect(() => {
     propsRef.current = props;
@@ -501,6 +529,7 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
       if (cancelled) return;
       engine = await createEngine(canvas);
       if (cancelled) return engine.dispose();
+      host.dataset.renderer = engine instanceof WebGPUEngine ? "webgpu" : "webgl";
       engine.setHardwareScalingLevel(qualityScale(propsRef.current.quality));
 
       const scene = new Scene(engine);
@@ -823,6 +852,7 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
       scene.onDisposeObservable.add(() => observer.disconnect());
     })().catch((error) => {
       console.error("Babylon terrain initialization failed", error);
+      if (!cancelled) setFailure(true);
     });
 
     return () => {
@@ -835,7 +865,13 @@ export function BabylonTerrainScene(props: TerrainSceneProps) {
 
   return (
     <div ref={hostRef} className={`terrain-scene ${ready ? "ready" : "loading"}`} aria-label="Three-dimensional terrain of Middle-earth">
-      {!ready && <div className="terrain-loading"><span /><small>Raising the mountains…</small></div>}
+      {!ready && !failure && <div className="terrain-loading"><span /><small>Raising the mountains…</small></div>}
+      {failure && (
+        <div className="terrain-loading terrain-failed" role="alert">
+          <small>The terrain engine could not start.</small>
+          <button type="button" onClick={() => window.location.reload()}>Try again</button>
+        </div>
+      )}
     </div>
   );
 }
